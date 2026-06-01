@@ -87,7 +87,7 @@ class SampleViewModel : ViewModel() {
 
     fun startPhysical(slug: String) = viewModelScope.launch {
         runCatching {
-            val res = AddressIQ.startPhysical(locationCode = LOCATION_CODE, provider = slug)
+            val res = AddressIQ.startPhysicalVerification(locationCode = LOCATION_CODE, provider = slug)
             verificationCode = res["verificationCode"] as? String
             append("startPhysical($slug): $verificationCode")
         }.onFailure { append("startPhysical: error ${it.message}") }
