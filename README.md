@@ -9,9 +9,13 @@ and a Jetpack Compose drop-in verify activity.
 ## Repository layout
 
 ```
-.                ← the SDK (com.addressiq.android:sdk): src/main, src/test
-  example/       runnable Compose app, linked to the LOCAL SDK (composite build)
+.                  ← the SDK (com.addressiq.android:sdk): src/main, src/test
+  examples/kotlin/ Jetpack Compose app (Kotlin API)
+  examples/java/   View-based app using the Java bridge (AddressIQJava)
 ```
+
+Both examples link to the LOCAL SDK via a composite build
+(`includeBuild("../..")` + dependency substitution).
 
 ## Install (consumers)
 
@@ -33,15 +37,18 @@ gradle wrapper       # once, to generate ./gradlew (or use Android Studio)
 
 Requires JDK 17 + the Android SDK (API 36).
 
-## Example against your local SDK
+## Examples against your local SDK
 
 ```bash
-cd example
-gradle assembleDebug   # or installDebug onto a device
+cd examples/kotlin && gradle assembleDebug   # Kotlin / Compose
+cd examples/java   && gradle assembleDebug   # Java (AddressIQJava bridge)
+# or installDebug onto a connected device/emulator
 ```
 
-`example/settings.gradle.kts` uses `includeBuild("..")` with dependency
+Each example's `settings.gradle.kts` uses `includeBuild("../..")` with dependency
 substitution, so the app builds against this repo's SDK source (no publish step).
+The Java app calls the `AddressIQJava` bridge — static, `CompletableFuture`-based
+methods for Java callers.
 
 ## Release
 
@@ -57,5 +64,5 @@ Publishes to GitHub Packages (automatic `GITHUB_TOKEN`) and Maven Central
 
 ## Contributing
 
-Fork, branch, PR. CI runs the SDK unit tests and assembles the example against
+Fork, branch, PR. CI runs the SDK unit tests and assembles both examples against
 the local SDK on every push/PR.
