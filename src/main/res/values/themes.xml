@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Base theme for the AddressIQ verify activity. Inherits from
+      Material3 DayNight so partners on Material3 host apps get
+      automatic dark/light adaptation. The Compose layer paints the
+      actual UI; this style just sets up the activity window.
+    -->
+    <style name="Theme.AddressIQVerify" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

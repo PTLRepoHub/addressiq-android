@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application>
+        <receiver
+            android:name="com.addressiq.android.geofence.GeofenceTransitionReceiver"
+            android:exported="false" />
+
+        <!--
+          Drop-in collect + verify widget. Launched via AddressIQVerifyContract;
+          partners never declare this themselves — manifest-merged from the
+          library AAR. Theme=Translucent so the activity background paints
+          through and the Compose surface controls the visual.
+        -->
+        <activity
+            android:name="com.addressiq.android.ui.AddressIQVerifyActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AddressIQVerify" />
+    </application>
+
+</manifest>
