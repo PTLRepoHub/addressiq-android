@@ -92,6 +92,9 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    // Provides the XML `Theme.Material3.*` parents used by res/values/themes.xml
+    // (the verify activity's window theme). Compose-material3 does not ship these.
+    implementation("com.google.android.material:material:1.12.0")
     // For ViewModel-scoped state inside the verify activity if needed.
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
 
