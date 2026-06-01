@@ -1,15 +1,18 @@
 plugins {
     id("com.android.application") version "8.5.0"
     kotlin("android") version "2.0.0"
+    // Kotlin 2.0+ requires the standalone Compose Compiler plugin when compose is on.
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.0"
 }
 
 android {
     namespace = "com.addressiq.example"
-    compileSdk = 34
+    // Must be >= the SDK's compileSdk (36).
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.addressiq.example"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
     }
@@ -19,7 +22,6 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 }
 
 dependencies {
