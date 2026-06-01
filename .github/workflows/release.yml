@@ -1,0 +1,47 @@
+name: Release
+
+# Publishes com.addressiq.android:sdk to GitHub Packages + Maven Central.
+# Push a tag `vX.Y.Z`, or run manually (publishToMavenLocal dry-run).
+#
+# Secrets: OSSRH_USERNAME/OSSRH_PASSWORD + SIGNING_KEY/SIGNING_PASSWORD for
+# Maven Central (each gated — absent ones are skipped). GITHUB_TOKEN is automatic.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (publishToMavenLocal)"
+        type: boolean
+        default: true
+
+jobs:
+  publish:
+    name: Publish (Maven)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10"
+      - name: Publish
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            V="${GITHUB_REF_NAME#v}"
+            gradle publish -PVERSION="$V" --no-daemon
+          else
+            gradle publishToMavenLocal -PVERSION="0.0.0-SNAPSHOT" --no-daemon
+          fi
