@@ -1,0 +1,29 @@
+name: proto-sync
+
+# Regenerates language bindings from the live wire contract
+# (PTLRepoHub/AddressIq-proto) and fails if the committed code has drifted.
+# Keeps every SDK in lock-step with the proto source of truth.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  proto-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - run: buf generate
+      - name: Verify committed bindings match the contract
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Generated proto bindings are stale. Run 'buf generate' and commit the result." >&2
+            exit 1
+          fi
