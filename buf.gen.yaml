@@ -1,0 +1,19 @@
+version: v2
+# Wire contract source — see PTLRepoHub/AddressIq-proto. Swap to
+#   inputs: [ { module: buf.build/addressiq/addressiq } ]
+# once the BSR module is published.
+inputs:
+  - git_repo: https://github.com/PTLRepoHub/AddressIq-proto.git
+    branch: main
+plugins:
+  # Java + Kotlin DSL, "lite" runtime (Android). The Kotlin builders are a
+  # thin layer over the Java classes, so both are generated. google.protobuf
+  # well-known types come from protobuf-javalite (see build.gradle.kts).
+  - remote: buf.build/protocolbuffers/java:v25.3
+    out: src/main/java
+    opt:
+      - lite
+  - remote: buf.build/protocolbuffers/kotlin:v25.3
+    out: src/main/kotlin
+    opt:
+      - lite

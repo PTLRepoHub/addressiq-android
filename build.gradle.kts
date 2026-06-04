@@ -60,6 +60,12 @@ android {
 }
 
 dependencies {
+    // Runtime for the generated wire-contract bindings under
+    // src/main/java + src/main/kotlin (source: PTLRepoHub/AddressIq-proto).
+    // The "lite" runtime keeps method count / APK size down on Android and
+    // bundles the google.protobuf well-known types (e.g. Timestamp).
+    implementation("com.google.protobuf:protobuf-kotlin-lite:3.25.3")
+
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     // Provides `CoroutineScope.future { ... }` — exposes Kotlin suspend
     // functions to Java callers as CompletableFuture. Used by
