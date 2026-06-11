@@ -16,4 +16,8 @@ data class AddressDraft(
     val streetName: String? = null,
     val buildingColor: String? = null,
     val directions: String? = null,
+    // Map-flow fields (Places autocomplete + Street View pin-confirm).
+    val placeId: String? = null,
+    val streetviewPanoId: String? = null,
+    val streetviewHeading: Double? = null,
 ) : Parcelable

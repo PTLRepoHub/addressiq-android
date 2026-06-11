@@ -17,7 +17,7 @@ import kotlinx.parcelize.Parcelize
  *   class MyActivity : AppCompatActivity() {
  *     private val verify = registerForActivityResult(AddressIQVerifyContract()) { result ->
  *       when (result) {
- *         is AddressIQVerifyResult.Completed -> navigateToSuccess(result.verificationId)
+ *         is AddressIQVerifyResult.Completed -> startVerification(result.locationCode)
  *         is AddressIQVerifyResult.Cancelled -> { }
  *         is AddressIQVerifyResult.Failed    -> showError(result.code, result.message)
  *       }
@@ -64,6 +64,9 @@ data class AddressIQVerifyInput(
     val firstName: String? = null,
     val lastName: String? = null,
     val email: String? = null,
+    /** Google Maps API key — enables the address map flow (autocomplete, pin,
+     *  reverse geocode, Street View). When null the step degrades to manual entry. */
+    val googleMapsApiKey: String? = null,
     val theme: AddressIQThemeOverrides? = null,
     val privacyPolicyUrl: String? = null,
     val termsUrl: String? = null,
@@ -71,12 +74,17 @@ data class AddressIQVerifyInput(
 
 /** Sealed result type returned to the partner via [AddressIQVerifyContract]. */
 sealed class AddressIQVerifyResult : Parcelable {
-    /** Verification started successfully. Partner receives the verification + location codes. */
+    /**
+     * Address collected successfully. The Collect UI is **collect-only** — it
+     * saves the address and returns its [locationCode]; it does NOT start a
+     * verification. Start verification from the result with
+     * `AddressIQ.startVerification(context, locationCode, …)`.
+     */
     @Parcelize
     data class Completed(
-        val verificationId: String,
-        val locationId: String,
-        val status: String,
+        val locationCode: String,
+        val formattedAddress: String?,
+        val isExisting: Boolean = false,
     ) : AddressIQVerifyResult()
 
     /** User dismissed the flow (back button, explicit close). */
