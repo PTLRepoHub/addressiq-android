@@ -2,6 +2,8 @@
 
 package com.addressiq.android
 
+import android.content.Context
+import com.addressiq.android.geofence.AddressIQGeofenceController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,6 +69,18 @@ data class VerificationLifecycleState(
 sealed class AddressIQError(message: String) : Exception(message) {
     object NotInitialized : AddressIQError("AddressIQ.initialize must be called first")
     object NoActiveSession : AddressIQError("No active verification session")
+
+    /**
+     * Foreground and/or background location permission was not granted
+     * before a verification start was attempted. The SDK gates every
+     * `start*` call on [getPermissionState] so collection never begins
+     * without the grants it needs. The [code] string is the stable
+     * `"PERMISSION_DENIED"` token shared across the RN/iOS/Flutter SDKs.
+     */
+    data class PermissionDenied(
+        val code: String = "PERMISSION_DENIED",
+    ) : AddressIQError("Foreground and background location permissions are required before starting verification")
+
     data class Http(val status: Int, val code: String?, val msg: String?) :
         AddressIQError("AddressIQ HTTP $status (${code ?: "?"}): ${msg ?: ""}")
 }
@@ -277,10 +291,40 @@ object AddressIQ {
     // ── Verification surface ──────────────────────────────────────────────
 
     /**
+     * Start a digital address verification. Uses SDK telemetry +
+     * geofencing to score residency at the given location. Hits
+     * `POST /api/v1/locations/{locationCode}/verifications/digital`
+     * with body `{"digitalProvider": …}` (defaults to `internal_ai`).
+     *
+     * Mirrors `startVerification` on the RN/iOS/Flutter SDKs. The
+     * [context] is required so the SDK can gate on the OS permission
+     * state (cross-SDK §0) and light up collection after the call
+     * succeeds.
+     */
+    suspend fun startVerification(
+        context: Context,
+        locationCode: String,
+        digitalProvider: String? = null,
+        idempotencyKey: String? = null,
+        branchId: String? = null,
+    ): Map<String, Any?> {
+        val cfg = requireInitialized()
+        assertLocationPermissionGranted(context)
+        val url = "${cfg.resolvedApiUrl}/api/v1/locations/$locationCode/verifications/digital"
+        val body = buildMap<String, Any?> {
+            put("digitalProvider", digitalProvider ?: "internal_ai")
+        }
+        val result = post(cfg, url, body, idempotencyKey, branchId)
+        activateCollection(context, locationCode, result)
+        return result
+    }
+
+    /**
      * Start a physical address verification. A partner-provided agent
      * or KYC provider visits the address to confirm residency.
      */
     suspend fun startPhysicalVerification(
+        context: Context,
         locationCode: String,
         provider: String,
         agentId: String? = null,
@@ -289,13 +333,16 @@ object AddressIQ {
         branchId: String? = null,
     ): Map<String, Any?> {
         val cfg = requireInitialized()
+        assertLocationPermissionGranted(context)
         val url = "${cfg.resolvedApiUrl}/api/v1/locations/$locationCode/verifications/physical"
         val body = buildMap {
             put("provider", provider)
             agentId?.let { put("agentId", it) }
             slaHours?.let { put("slaHours", it) }
         }
-        return post(cfg, url, body, idempotencyKey, branchId)
+        val result = post(cfg, url, body, idempotencyKey, branchId)
+        activateCollection(context, locationCode, result)
+        return result
     }
 
     /**
@@ -304,6 +351,7 @@ object AddressIQ {
      * physical fallback fires if the digital half resolves to UNKNOWN.
      */
     suspend fun startDigitalAndPhysicalVerification(
+        context: Context,
         locationCode: String,
         physicalProvider: String,
         digitalProvider: String? = null,
@@ -314,6 +362,7 @@ object AddressIQ {
         branchId: String? = null,
     ): Map<String, Any?> {
         val cfg = requireInitialized()
+        assertLocationPermissionGranted(context)
         val url = "${cfg.resolvedApiUrl}/api/v1/locations/$locationCode/verifications/combined"
         val body = buildMap<String, Any?> {
             put("physicalProvider", physicalProvider)
@@ -322,7 +371,9 @@ object AddressIQ {
             agentId?.let { put("agentId", it) }
             slaHours?.let { put("slaHours", it) }
         }
-        return post(cfg, url, body, idempotencyKey, branchId)
+        val result = post(cfg, url, body, idempotencyKey, branchId)
+        activateCollection(context, locationCode, result)
+        return result
     }
 
 
@@ -360,10 +411,60 @@ object AddressIQ {
         emitStateChange()
     }
 
+    /**
+     * Best-effort telemetry flush. Exposed so the drop-in widget flow can
+     * trigger a flush after a successful submit without duplicating the
+     * queue wiring. Never throws — collection is best-effort.
+     */
+    fun flushTelemetryBestEffort(context: Context) {
+        runCatching {
+            com.addressiq.android.storage.AddressIQTelemetryQueue.shared().count()
+        }
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────
 
     private fun requireInitialized(): AddressIQConfig =
         config ?: throw AddressIQError.NotInitialized
+
+    /**
+     * Cross-SDK §0 permission gate. Throws [AddressIQError.PermissionDenied]
+     * when either foreground or background location is not `GRANTED`, so a
+     * verification never starts without the grants collection needs. Mirrors
+     * `assertReadyForVerificationStart` in the RN reference.
+     */
+    private fun assertLocationPermissionGranted(context: Context) {
+        val perms = getPermissionState(context)
+        if (perms["foregroundLocation"] != "GRANTED" || perms["backgroundLocation"] != "GRANTED") {
+            throw AddressIQError.PermissionDenied()
+        }
+    }
+
+    /**
+     * Light up OS-level collection after a successful `start*` call:
+     * mark the session COLLECTING, register the adaptive geofence the
+     * backend returned (when present), and flush buffered telemetry.
+     * Entirely best-effort — a wiring failure never fails the start call.
+     */
+    private fun activateCollection(
+        context: Context,
+        locationCode: String,
+        result: Map<String, Any?>,
+    ) {
+        val verificationCode = result["verificationCode"] as? String ?: return
+        markActiveSession(locationCode, verificationCode)
+        val geofence = result["geofence"] as? Map<*, *>
+        val lat = (geofence?.get("lat") as? Number)?.toDouble()
+        val lon = (geofence?.get("lon") as? Number)?.toDouble()
+        if (lat != null && lon != null) {
+            val radius = (geofence?.get("radiusM") as? Number)?.toFloat() ?: 150f
+            runCatching {
+                AddressIQGeofenceController(context.applicationContext)
+                    .register(verificationCode, lat, lon, radius)
+            }
+        }
+        flushTelemetryBestEffort(context.applicationContext)
+    }
 
     private fun emitStateChange() {
         _stateFlow.value = getVerificationStateSnapshot()

@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,7 +58,7 @@ private enum class Stage { Loading, Permission, Address, Details, Consent, Submi
 @Composable
 fun AddressIQVerifyOrchestrator(
     input: AddressIQVerifyInput,
-    onCompleted: (verificationId: String, locationId: String, status: String) -> Unit,
+    onCompleted: (locationCode: String, formattedAddress: String?) -> Unit,
     onCancelled: () -> Unit,
     onFailed: (code: String, message: String) -> Unit,
 ) {
@@ -71,7 +76,8 @@ fun AddressIQVerifyOrchestrator(
     var sessionToken by rememberSaveable { mutableStateOf<String?>(null) }
     var address by rememberSaveable { mutableStateOf(AddressDraft()) }
     var submitting by remember { mutableStateOf(false) }
-    var result by rememberSaveable { mutableStateOf<Triple<String, String, String>?>(null) }
+    // (locationCode, formattedAddress) — collect-only; no verification yet.
+    var result by rememberSaveable { mutableStateOf<Pair<String, String?>?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     suspend fun createSession() {
@@ -125,29 +131,39 @@ fun AddressIQVerifyOrchestrator(
             val body = JSONObject().apply {
                 address.lat?.let { put("lat", it) }
                 address.lon?.let { put("lon", it) }
-                put("placeId", "sdk_android_manual")
+                put("placeId", address.placeId ?: "sdk_android_manual")
                 address.formattedAddress?.let { put("formattedAddress", it) }
                 address.propertyNumber?.let { put("propertyNumber", it) }
                 address.streetName?.let { put("streetName", it) }
                 address.buildingColor?.let { put("buildingColor", it) }
                 address.directions?.let { put("directions", it) }
             }.toString()
+            // Collect-only endpoint: creates the Location and returns its
+            // locationCode. It does NOT start a verification or wire collection —
+            // the host owns that via AddressIQ.startVerification(...) from the
+            // result callback (contract §collect-verify split).
             val req = Request.Builder()
-                .url("$apiBase/api/v1/widget/submit")
+                .url("$apiBase/api/v1/widget/collect")
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .header("Authorization", "Bearer $token")
+                // The backend rejects state-creating POSTs without an idempotency key.
+                .header(
+                    "Idempotency-Key",
+                    "iqidem_android_widget_collect_${System.currentTimeMillis()}",
+                )
                 .build()
             val resp = withContext(Dispatchers.IO) {
                 http.newCall(req).execute().use { r ->
                     val raw = r.body?.string().orEmpty()
-                    if (!r.isSuccessful) throw RuntimeException("Submit failed (${r.code})")
+                    if (!r.isSuccessful) throw RuntimeException("Collect failed (${r.code})")
                     JSONObject(raw)
                 }
             }
-            val verificationId = resp.getString("verificationId")
-            val locationId = resp.getString("locationId")
-            val status = resp.optString("status", "PENDING")
-            result = Triple(verificationId, locationId, status)
+            val locationCode = resp.getString("locationCode")
+            val formattedAddress = resp.optString("formattedAddress", null) ?: address.formattedAddress
+            result = Pair(locationCode, formattedAddress)
+            // No collection wiring here — verification (and its geofence +
+            // background collection) is started by the host from the result.
             stage = Stage.Success
         } catch (e: Throwable) {
             errorMessage = e.message ?: "Submission failed"
@@ -169,7 +185,22 @@ fun AddressIQVerifyOrchestrator(
         }
     }
 
-    when (stage) {
+    // Step indicator (P1-2): numbered user-facing capture steps. Loading /
+    // Submitting / Success / Error are not numbered → -1 (hidden).
+    val stepIndex = when (stage) {
+        Stage.Permission -> 0
+        Stage.Address -> 1
+        Stage.Details -> 2
+        Stage.Consent -> 3
+        else -> -1
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (stepIndex >= 0) {
+            StepIndicator(current = stepIndex, total = 4)
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            when (stage) {
         Stage.Loading -> LoadingView()
         Stage.Permission -> LocationPermissionScreen(
             onGranted = { stage = Stage.Address },
@@ -177,6 +208,7 @@ fun AddressIQVerifyOrchestrator(
         )
         Stage.Address -> AddressScreen(
             initial = address,
+            googleMapsApiKey = input.googleMapsApiKey,
             onNext = { address = it; stage = Stage.Details },
             onCancel = onCancelled,
             fetchLocation = { fetchLocation() },
@@ -200,7 +232,7 @@ fun AddressIQVerifyOrchestrator(
         Stage.Success -> {
             val r = result
             if (r != null) {
-                SuccessScreen(verificationId = r.first, onDone = { onCompleted(r.first, r.second, r.third) })
+                SuccessScreen(locationCode = r.first, onDone = { onCompleted(r.first, r.second) })
             } else {
                 LoadingView()
             }
@@ -210,6 +242,8 @@ fun AddressIQVerifyOrchestrator(
             onRetry = { scope.launch { createSession() } },
             onCancel = onCancelled,
         )
+            }
+        }
     }
 }
 
@@ -248,5 +282,45 @@ private fun ErrorView(message: String, onRetry: () -> Unit, onCancel: () -> Unit
         AddressIQButton(text = "Try again", onClick = onRetry)
         Spacer(modifier = Modifier.height(10.dp))
         AddressIQButton(text = "Close", onClick = onCancel, variant = AddressIQButtonVariant.Outline)
+    }
+}
+
+/**
+ * Slim progress indicator shown atop the Collect UI multi-step flow (P1-2).
+ * A dot per step (the active dot widens) plus a "Step X of N" label, themed
+ * via [LocalAddressIQTheme]. Mirrors the React Native `<IQLocationManager>`,
+ * Flutter `AddressIQVerify`, and iOS `AddressIQVerifyView` indicators.
+ */
+@Composable
+private fun StepIndicator(current: Int, total: Int) {
+    val theme = LocalAddressIQTheme.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(top = 16.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            for (i in 0 until total) {
+                Box(
+                    modifier = Modifier
+                        .padding(end = 6.dp)
+                        .height(8.dp)
+                        .width(if (i == current) 20.dp else 8.dp)
+                        .background(
+                            color = if (i <= current) theme.primary else theme.textSecondary.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(4.dp),
+                        ),
+                )
+            }
+        }
+        Text(
+            "Step ${current + 1} of $total",
+            color = theme.textSecondary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }

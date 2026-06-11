@@ -37,7 +37,7 @@ import java.util.concurrent.CompletableFuture
  *
  * AddressIQJava.setUser(new SdkUser("cust_01J9P7XK", null, null, null, null))
  *   .thenCompose(ignored -> AddressIQJava.startPhysicalVerification(
- *     "loc_abc", "dojah", null, null, null, null
+ *     context, "loc_abc", "dojah", null, null, null, null
  *   ))
  *   .thenAccept(result -> Log.i("AddressIQ", "Started: " + result.get("verificationCode")))
  *   .exceptionally(throwable -> {
@@ -109,12 +109,42 @@ public object AddressIQJava {
     // ── Verification surface ──────────────────────────────────────────
 
     /**
+     * Start a digital address verification. Returns a future whose value
+     * is the API response (`verificationCode`, `status`, etc.). The
+     * [context] is required so the SDK can gate on the OS permission
+     * state and light up collection — the future completes exceptionally
+     * with [com.addressiq.android.AddressIQError.PermissionDenied] (code
+     * `"PERMISSION_DENIED"`) when location grants are missing.
+     */
+    @JvmStatic
+    @JvmOverloads
+    public fun startVerification(
+        context: Context,
+        locationCode: String,
+        digitalProvider: String? = null,
+        idempotencyKey: String? = null,
+        branchId: String? = null,
+    ): CompletableFuture<Map<String, Any?>> = scope.future {
+        AddressIQ.startVerification(
+            context = context,
+            locationCode = locationCode,
+            digitalProvider = digitalProvider,
+            idempotencyKey = idempotencyKey,
+            branchId = branchId,
+        )
+    }
+
+    /**
      * Start a physical address verification. Returns a future whose
      * value is the API response (`verificationCode`, `status`, etc.).
+     * The future completes exceptionally with
+     * [com.addressiq.android.AddressIQError.PermissionDenied] when
+     * location grants are missing.
      */
     @JvmStatic
     @JvmOverloads
     public fun startPhysicalVerification(
+        context: Context,
         locationCode: String,
         provider: String,
         agentId: String? = null,
@@ -123,6 +153,7 @@ public object AddressIQJava {
         branchId: String? = null,
     ): CompletableFuture<Map<String, Any?>> = scope.future {
         AddressIQ.startPhysicalVerification(
+            context = context,
             locationCode = locationCode,
             provider = provider,
             agentId = agentId,
@@ -136,6 +167,7 @@ public object AddressIQJava {
     @JvmStatic
     @JvmOverloads
     public fun startDigitalAndPhysicalVerification(
+        context: Context,
         locationCode: String,
         physicalProvider: String,
         digitalProvider: String? = null,
@@ -146,6 +178,7 @@ public object AddressIQJava {
         branchId: String? = null,
     ): CompletableFuture<Map<String, Any?>> = scope.future {
         AddressIQ.startDigitalAndPhysicalVerification(
+            context = context,
             locationCode = locationCode,
             physicalProvider = physicalProvider,
             digitalProvider = digitalProvider,

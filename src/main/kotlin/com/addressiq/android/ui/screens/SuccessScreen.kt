@@ -43,7 +43,7 @@ import com.addressiq.android.ui.components.BrandingFooter
 
 @Composable
 fun SuccessScreen(
-    verificationId: String,
+    locationCode: String,
     onDone: () -> Unit,
 ) {
     val theme = LocalAddressIQTheme.current
@@ -82,7 +82,7 @@ fun SuccessScreen(
             Spacer(modifier = Modifier.height(28.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "Verification Started",
+                    "Address Collected",
                     color = theme.text,
                     fontSize = 26.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -90,7 +90,7 @@ fun SuccessScreen(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    "We're now verifying your address. This typically takes 2-7 days. You'll be notified when it's complete.",
+                    "Your address has been saved. We'll verify you live there once verification starts.",
                     color = theme.textSecondary,
                     fontSize = 15.sp,
                     modifier = Modifier.padding(horizontal = 10.dp).alpha(textAlpha),
@@ -107,7 +107,7 @@ fun SuccessScreen(
                     Icon(Icons.Filled.Lightbulb, contentDescription = null, tint = theme.primary, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.size(10.dp))
                     Text(
-                        "Keep your location services turned on and don't force-close this app for the best results",
+                        "Keep your location services turned on so verification can confirm you live here",
                         color = theme.text,
                         fontSize = 13.sp,
                         modifier = Modifier.weight(1f),
@@ -115,7 +115,7 @@ fun SuccessScreen(
                 }
                 Spacer(modifier = Modifier.height(18.dp))
                 Text(
-                    "Reference: $verificationId",
+                    "Reference: $locationCode",
                     color = theme.textSecondary,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,

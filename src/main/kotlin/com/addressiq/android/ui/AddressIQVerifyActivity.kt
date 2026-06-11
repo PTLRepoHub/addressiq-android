@@ -39,9 +39,9 @@ class AddressIQVerifyActivity : ComponentActivity() {
             CompositionLocalProvider(LocalAddressIQTheme provides theme) {
                 AddressIQVerifyOrchestrator(
                     input = input,
-                    onCompleted = { verificationId, locationId, status ->
+                    onCompleted = { locationCode, formattedAddress ->
                         finishWith(
-                            AddressIQVerifyResult.Completed(verificationId, locationId, status),
+                            AddressIQVerifyResult.Completed(locationCode, formattedAddress),
                         )
                     },
                     onCancelled = { finishWith(AddressIQVerifyResult.Cancelled) },
