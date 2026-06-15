@@ -54,8 +54,6 @@ fun ConsentScreen(
 
     ScreenScaffold(
         title = "Almost done!",
-        step = 2,
-        totalSteps = 3,
         onBack = onBack,
         onClose = onCancel,
         footer = {

@@ -57,6 +57,7 @@ fun AddressScreen(
     initial: AddressDraft,
     googleMapsApiKey: String?,
     onNext: (AddressDraft) -> Unit,
+    onStreetView: (AddressDraft) -> Unit,
     onCancel: () -> Unit,
     fetchLocation: suspend () -> Pair<Double, Double>?,
 ) {
@@ -74,9 +75,9 @@ fun AddressScreen(
     var resolving by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf<List<PlaceSuggestion>>(emptyList()) }
-    var showStreetView by remember { mutableStateOf(false) }
-    var svPanoId by remember { mutableStateOf<String?>(null) }
     var suppressGeocode by remember { mutableStateOf(false) }
+    // §6.6 step 5: "Current Location | Search Address" input tabs.
+    var mode by remember { mutableStateOf("current") }
 
     suspend fun capture() {
         loading = true
@@ -108,50 +109,19 @@ fun AddressScreen(
         if (addr != null) formatted = addr
     }
 
-    fun finish() {
-        onNext(
-            initial.copy(
-                lat = lat,
-                lon = lon,
-                formattedAddress = formatted.trim(),
-                placeId = placeId,
-                streetviewPanoId = svPanoId,
-            ),
-        )
-    }
-
-    // Street View confirm sub-screen.
-    if (showStreetView && maps != null && lat != null && lon != null) {
-        ScreenScaffold(
-            title = "Confirm your building",
-            subtitle = "Drag the view to frame your building, then confirm.",
-            step = 0,
-            totalSteps = 3,
-            onClose = onCancel,
-            footer = {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton(onClick = { showStreetView = false }) { Text("Back", color = theme.primary) }
-                    AddressIQButton(text = "Confirm", onClick = { finish() })
-                }
-            },
-        ) {
-            StreetViewWebView(
-                apiKey = mapsKey!!,
-                lat = lat!!,
-                lon = lon!!,
-                modifier = Modifier.fillMaxWidth().height(320.dp),
-            )
-        }
-        return
-    }
+    // Address draft (no Street View fields — those are set by the next stage).
+    fun buildDraft(): AddressDraft = initial.copy(
+        lat = lat,
+        lon = lon,
+        formattedAddress = formatted.trim(),
+        placeId = placeId,
+    )
 
     val canContinue = lat != null && lon != null && formatted.trim().isNotEmpty()
 
     ScreenScaffold(
         title = "Confirm your address",
         subtitle = "Search for your address or drop a pin on the map. We'll use this to verify where you live.",
-        step = 0,
-        totalSteps = 3,
         onClose = onCancel,
         footer = {
             AddressIQButton(
@@ -160,20 +130,17 @@ fun AddressScreen(
                     val client = maps
                     val la = lat
                     val lo = lon
+                    // §6.6 step 6 is coverage-gated: route to the Street View
+                    // stage when a panorama exists, else advance to details.
                     if (client != null && la != null && lo != null) {
                         scope.launch {
                             resolving = true
                             val cov = client.streetViewCoverage(la, lo)
                             resolving = false
-                            if (cov.available) {
-                                svPanoId = cov.panoId
-                                showStreetView = true
-                            } else {
-                                finish()
-                            }
+                            if (cov.available) onStreetView(buildDraft()) else onNext(buildDraft())
                         }
                     } else {
-                        finish()
+                        onNext(buildDraft())
                     }
                 },
                 enabled = canContinue && !resolving,
@@ -181,6 +148,23 @@ fun AddressScreen(
         },
     ) {
         if (maps != null) {
+            // §6.6 step 5: Current Location | Search Address tabs.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                listOf("current" to "Current Location", "search" to "Search Address").forEach { (key, label) ->
+                    val on = mode == key
+                    TextButton(
+                        onClick = { mode = key },
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(1.dp, if (on) theme.primary else theme.border, RoundedCornerShape(10.dp)),
+                    ) {
+                        Text(label, color = if (on) theme.primary else theme.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (mode == "search") {
             // Search + autocomplete.
             OutlinedTextField(
                 value = query,
@@ -234,6 +218,7 @@ fun AddressScreen(
                     }
                 }
             }
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
             if (loading || lat == null || lon == null) {
@@ -256,11 +241,13 @@ fun AddressScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-            TextButton(onClick = { scope.launch { capture() } }) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Filled.MyLocation, contentDescription = null, tint = theme.primary, modifier = Modifier.size(14.dp))
-                    Text("Use my current location", color = theme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            if (mode == "current") {
+                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(onClick = { scope.launch { capture() } }) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Filled.MyLocation, contentDescription = null, tint = theme.primary, modifier = Modifier.size(14.dp))
+                        Text("Use my current location", color = theme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
