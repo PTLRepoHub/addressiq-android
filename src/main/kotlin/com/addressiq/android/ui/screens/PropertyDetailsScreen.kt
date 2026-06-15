@@ -65,8 +65,6 @@ fun PropertyDetailsScreen(
     ScreenScaffold(
         title = "Property Details",
         subtitle = "Help us identify your building",
-        step = 1,
-        totalSteps = 3,
         onBack = onBack,
         onClose = onCancel,
         footer = {

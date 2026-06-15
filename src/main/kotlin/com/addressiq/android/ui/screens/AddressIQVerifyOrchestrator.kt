@@ -48,7 +48,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
-private enum class Stage { Loading, Permission, Address, Details, Consent, Submitting, Success, Error }
+private enum class Stage { Loading, Permission, Address, Streetview, Details, Consent, Submitting, Success, Error }
 
 /**
  * State machine + backend wiring for the verify flow. Holds the
@@ -185,11 +185,12 @@ fun AddressIQVerifyOrchestrator(
         }
     }
 
-    // Step indicator (P1-2): numbered user-facing capture steps. Loading /
-    // Submitting / Success / Error are not numbered → -1 (hidden).
+    // Step indicator (§6.6): the 4 numbered capture steps 5–8 are
+    // address(1/4) → streetview(2/4) → details(3/4) → consent(4/4). Permission
+    // (step 4) and loading/submitting/success/error are not numbered → -1.
     val stepIndex = when (stage) {
-        Stage.Permission -> 0
-        Stage.Address -> 1
+        Stage.Address -> 0
+        Stage.Streetview -> 1
         Stage.Details -> 2
         Stage.Consent -> 3
         else -> -1
@@ -210,8 +211,17 @@ fun AddressIQVerifyOrchestrator(
             initial = address,
             googleMapsApiKey = input.googleMapsApiKey,
             onNext = { address = it; stage = Stage.Details },
+            onStreetView = { address = it; stage = Stage.Streetview },
             onCancel = onCancelled,
             fetchLocation = { fetchLocation() },
+        )
+        Stage.Streetview -> StreetViewScreen(
+            apiKey = input.googleMapsApiKey ?: "",
+            lat = address.lat ?: 0.0,
+            lon = address.lon ?: 0.0,
+            onConfirm = { stage = Stage.Details },
+            onBack = { stage = Stage.Address },
+            onCancel = onCancelled,
         )
         Stage.Details -> PropertyDetailsScreen(
             initial = address,

@@ -174,11 +174,22 @@ Plain-`Activity` (non-AndroidX) hosts forward their
 
 ## Example app
 
+Prerequisites: **JDK 17** + the **Android SDK (API 36)**. The example modules
+ship no Gradle wrapper, so either open the folder in **Android Studio** (it
+provisions one) or use a host `gradle` to generate one first:
+
 ```bash
-cd examples/kotlin && gradle assembleDebug   # Kotlin / Compose
-cd examples/java   && gradle assembleDebug   # Java (AddressIQJava bridge)
-# or installDebug onto a connected device/emulator
+cd examples/kotlin        # or examples/java (Java / AddressIQJava bridge)
+gradle wrapper            # one-time — generates ./gradlew (skip in Android Studio)
+
+./gradlew assembleDebug   # build the APK against the local SDK
+./gradlew installDebug    # install onto a running emulator / connected device
 ```
+
+Start an emulator first for `installDebug` (`emulator -avd <name>` or via
+Android Studio's Device Manager). The example's `apiKey` is hardcoded to the
+seed key `aiq_test_demo_bank_seed01` (editable on-screen) and defaults to the
+`SANDBOX` environment — no credentials file needed.
 
 The Kotlin example exercises the imperative API (digital + physical start),
 the lifecycle controls, and a **Launch Collect UI** button that drives
