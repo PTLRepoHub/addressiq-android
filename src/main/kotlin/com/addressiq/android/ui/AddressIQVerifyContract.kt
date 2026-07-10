@@ -70,6 +70,12 @@ data class AddressIQVerifyInput(
     val theme: AddressIQThemeOverrides? = null,
     val privacyPolicyUrl: String? = null,
     val termsUrl: String? = null,
+    /** Business display name shown on the intro/consent screens. */
+    val businessName: String? = null,
+    /** Override the hosted widget bundle URL (for local development). */
+    val widgetUrl: String? = null,
+    /** Override the resolved API base URL (for local development / mock upstream). */
+    val apiUrlOverride: String? = null,
 ) : Parcelable
 
 /** Sealed result type returned to the partner via [AddressIQVerifyContract]. */

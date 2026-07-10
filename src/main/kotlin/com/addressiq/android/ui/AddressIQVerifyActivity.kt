@@ -9,10 +9,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import com.addressiq.android.theme.LocalAddressIQTheme
 import com.addressiq.android.theme.mergeTheme
-import com.addressiq.android.ui.screens.AddressIQVerifyOrchestrator
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.addressiq.android.ui.screens.AddressIQWebFlow
 
 /**
  * Drop-in verify activity. Launched via [AddressIQVerifyContract] —
@@ -35,10 +36,19 @@ class AddressIQVerifyActivity : ComponentActivity() {
 
         val theme = mergeTheme(input.theme)
 
+        val defaultWidgetUrl = "https://cdn.addressiq.com/v0.1.0/iqcollect.js"
+        val apiUrl = input.apiUrlOverride ?: input.environment.defaultApiUrl()
+        val widgetUrl = input.widgetUrl ?: defaultWidgetUrl
+
         setContent {
             CompositionLocalProvider(LocalAddressIQTheme provides theme) {
-                AddressIQVerifyOrchestrator(
+                // The UI is now the shared web widget hosted in a WebView. This
+                // Activity owns only the native pieces: precise/Always permission
+                // and the location fix, bridged to the widget.
+                AddressIQWebFlow(
                     input = input,
+                    apiUrl = apiUrl,
+                    widgetUrl = widgetUrl,
                     onCompleted = { locationCode, formattedAddress ->
                         finishWith(
                             AddressIQVerifyResult.Completed(locationCode, formattedAddress),
@@ -48,6 +58,7 @@ class AddressIQVerifyActivity : ComponentActivity() {
                     onFailed = { code, message ->
                         finishWith(AddressIQVerifyResult.Failed(code, message))
                     },
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }

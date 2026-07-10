@@ -23,4 +23,7 @@ android {
 dependencies {
     // Resolved from the local SDK via the composite build in settings.gradle.kts.
     implementation("com.addressiq.android:sdk")
+    // ComponentActivity + registerForActivityResult, needed to launch the
+    // Collect UI (AddressIQVerifyContract) from Java. Matches the SDK's version.
+    implementation("androidx.activity:activity:1.9.0")
 }
