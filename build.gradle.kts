@@ -12,7 +12,10 @@ plugins {
 // Version is injected by CI from the release git tag (`-PVERSION=1.2.3`);
 // falls back to a SNAPSHOT for local builds. See .github/workflows/release.yml.
 version = (project.findProperty("VERSION") as String?) ?: "0.0.0-SNAPSHOT"
-group = "com.addressiq.android"
+// Maven coordinate group — must match the publication's groupId below and the
+// Central Portal namespace (com.addressiqpro, verified via addressiqpro.com).
+// Distinct from the Android/Kotlin package `com.addressiq.android`.
+group = "com.addressiqpro.android"
 
 android {
     namespace = "com.addressiq.android"
@@ -120,7 +123,11 @@ dependencies {
 publishing {
     publications {
         register<MavenPublication>("release") {
-            groupId = "com.addressiq.android"
+            // Maven Central namespaces are granted on proof of domain ownership.
+            // We own addressiqpro.com, so the namespace is com.addressiqpro.
+            // (This is the Maven coordinate only — the Java/Kotlin package
+            // remains com.addressiq.android.)
+            groupId = "com.addressiqpro.android"
             artifactId = "sdk"
             // version is taken from the project version set above (CI tag).
 
@@ -132,11 +139,11 @@ publishing {
             pom {
                 name.set("AddressIQ Android SDK")
                 description.set("AddressIQ address collection + verification SDK for Android.")
-                url.set("https://addressiq.io")
+                url.set("https://addressiqpro.com")
                 licenses {
                     license {
                         name.set("Proprietary")
-                        url.set("https://addressiq.io/license")
+                        url.set("https://addressiqpro.com/license")
                     }
                 }
                 developers {
@@ -146,7 +153,7 @@ publishing {
                     }
                 }
                 scm {
-                    url.set("https://github.com/addressiq/geo-tagging")
+                    url.set("https://github.com/PTLRepoHub/addressiq-android")
                 }
             }
         }
@@ -159,7 +166,7 @@ publishing {
             url = uri(
                 System.getenv("GITHUB_REPOSITORY")
                     ?.let { "https://maven.pkg.github.com/$it" }
-                    ?: "https://maven.pkg.github.com/addressiq/geo-tagging",
+                    ?: "https://maven.pkg.github.com/PTLRepoHub/addressiq-android",
             )
             credentials {
                 username = System.getenv("GITHUB_ACTOR")
@@ -167,21 +174,35 @@ publishing {
             }
         }
 
-        // Maven Central (Sonatype OSSRH) — only wired when the OSSRH secrets
-        // are present, so local builds and PR CI don't fail on missing creds.
-        if (!System.getenv("OSSRH_USERNAME").isNullOrBlank()) {
+        // Maven Central via the Sonatype Central Portal.
+        //
+        // The legacy OSSRH hosts (oss.sonatype.org, s01.oss.sonatype.org) were
+        // sunset on 2025-06-30. We publish through the Portal's OSSRH Staging
+        // API, a Nexus-2 compatibility shim that plain `maven-publish` can talk
+        // to. Credentials are Central Portal *user tokens*, not OSSRH logins.
+        //
+        // ⚠ Uploading is not enough. With plain `maven-publish` the deployment
+        // sits in a repository that is never handed to the Portal until you
+        // POST /manual/upload/defaultRepository/<namespace> — from the SAME IP
+        // that uploaded. release.yml does this. Without it, nothing appears at
+        // https://central.sonatype.com/publishing and the release silently
+        // never happens.
+        //
+        // Only wired when the token is present, so local builds and PR CI don't
+        // fail on missing creds.
+        if (!System.getenv("CENTRAL_TOKEN_USERNAME").isNullOrBlank()) {
             maven {
                 name = "MavenCentral"
                 url = uri(
                     if (version.toString().endsWith("SNAPSHOT")) {
-                        "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+                        "https://central.sonatype.com/repository/maven-snapshots/"
                     } else {
-                        "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+                        "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
                     },
                 )
                 credentials {
-                    username = System.getenv("OSSRH_USERNAME")
-                    password = System.getenv("OSSRH_PASSWORD")
+                    username = System.getenv("CENTRAL_TOKEN_USERNAME")
+                    password = System.getenv("CENTRAL_TOKEN_PASSWORD")
                 }
             }
         }

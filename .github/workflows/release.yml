@@ -1,10 +1,18 @@
 name: Release
 
-# Publishes com.addressiq.android:sdk to GitHub Packages + Maven Central.
-# Push a tag `vX.Y.Z`, or run manually (publishToMavenLocal dry-run).
+# Publishes com.addressiqpro.android:sdk to GitHub Packages + Maven Central.
+# Push a tag `vX.Y.Z` (release-please does this), or run manually
+# (publishToMavenLocal dry-run).
 #
-# Secrets: OSSRH_USERNAME/OSSRH_PASSWORD + SIGNING_KEY/SIGNING_PASSWORD for
-# Maven Central (each gated — absent ones are skipped). GITHUB_TOKEN is automatic.
+# Secrets:
+#   CENTRAL_TOKEN_USERNAME / CENTRAL_TOKEN_PASSWORD  — Central Portal user token
+#   SIGNING_KEY / SIGNING_PASSWORD                   — ASCII-armored GPG key
+# Each is gated in build.gradle.kts; absent ones are skipped so PR CI stays green.
+# GITHUB_TOKEN is automatic (GitHub Packages).
+#
+# NOTE: the legacy OSSRH hosts were sunset 2025-06-30. We go through the Central
+# Portal's OSSRH Staging API, which requires an explicit manual-upload call after
+# `gradle publish` — see the "Hand the staged deployment to the Portal" step.
 
 on:
   push:
@@ -15,6 +23,14 @@ on:
         description: "Dry run (publishToMavenLocal)"
         type: boolean
         default: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  # Central Portal namespace — must match `group` in build.gradle.kts.
+  CENTRAL_NAMESPACE: com.addressiqpro
 
 jobs:
   publish:
@@ -29,19 +45,50 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10"
+
       - name: Publish
+        id: publish
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "push" ]; then
             V="${GITHUB_REF_NAME#v}"
             gradle publish -PVERSION="$V" --no-daemon
+            echo "staged=true" >> "$GITHUB_OUTPUT"
           else
             gradle publishToMavenLocal -PVERSION="0.0.0-SNAPSHOT" --no-daemon
+            echo "staged=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # `gradle publish` uploads to the OSSRH Staging API, but with plain
+      # `maven-publish` the deployment is never handed to the Portal until this
+      # call is made — and it MUST come from the same IP that uploaded, hence
+      # the same job. Skipped when the Central token is absent (the Gradle repo
+      # is not wired in that case, so nothing was staged).
+      - name: Hand the staged deployment to the Portal
+        if: steps.publish.outputs.staged == 'true'
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CENTRAL_TOKEN_USERNAME:-}" ]; then
+            echo "::warning::CENTRAL_TOKEN_USERNAME unset — nothing was staged to Maven Central. Skipping."
+            exit 0
+          fi
+          AUTH=$(printf '%s:%s' "$CENTRAL_TOKEN_USERNAME" "$CENTRAL_TOKEN_PASSWORD" | base64 | tr -d '\n')
+          code=$(curl -sS -o /tmp/portal.out -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${AUTH}" \
+            "https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/${CENTRAL_NAMESPACE}")
+          echo "HTTP $code"; cat /tmp/portal.out || true
+          case "$code" in
+            2*) echo "Deployment handed to the Portal. Finish at https://central.sonatype.com/publishing" ;;
+            *)  echo "::error::manual upload failed (HTTP $code). Artifacts uploaded but NOT published." >&2; exit 1 ;;
+          esac
