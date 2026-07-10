@@ -7,6 +7,12 @@
 export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
-    'scope-enum': [1, 'always', ['proto', 'ci', 'deps', 'release', 'ui', 'core', 'docs']],
+    // Warn-only (level 1): an unlisted scope is a nudge, not a blocked PR.
+    'scope-enum': [1, 'always', [
+      'proto', 'widget', 'ci', 'deps', 'release', 'docs',
+      'ui', 'core', 'flow', 'types', 'publish', 'podspec', 'gradle', 'security',
+    ]],
+    // Long URLs and stack traces belong in bodies.
+    'body-max-line-length': [0, 'always'],
   },
 };
