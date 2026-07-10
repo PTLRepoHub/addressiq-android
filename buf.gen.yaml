@@ -4,7 +4,7 @@ version: v2
 # once the BSR module is published.
 inputs:
   - git_repo: https://github.com/PTLRepoHub/AddressIq-proto.git
-    branch: main
+    tag: v0.1.0
 plugins:
   # Java + Kotlin DSL, "lite" runtime (Android). The Kotlin builders are a
   # thin layer over the Java classes, so both are generated. google.protobuf
