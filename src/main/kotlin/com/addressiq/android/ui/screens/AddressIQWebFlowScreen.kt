@@ -37,7 +37,8 @@ import org.json.JSONObject
 fun AddressIQWebFlow(
     input: AddressIQVerifyInput,
     apiUrl: String,
-    widgetUrl: String,
+    /** Explicit developer override. `null` means "use the bundled asset"; there is no remote default. */
+    widgetUrl: String?,
     onCompleted: (locationCode: String, formattedAddress: String?) -> Unit,
     onCancelled: () -> Unit,
     onFailed: (code: String, message: String) -> Unit,
@@ -201,7 +202,7 @@ private fun Color.toHexRgb(): String {
 private fun flowHtml(
     input: AddressIQVerifyInput,
     apiUrl: String,
-    widgetUrl: String,
+    widgetUrl: String?,
     bundledJs: String?,
 ): String {
     // Business identity is fetched by the widget from the backend (tenant behind
@@ -225,7 +226,17 @@ private fun flowHtml(
     theme?.primary?.let { business.put("primaryColor", it.toHexRgb()) }
     theme?.secondary?.let { business.put("secondaryColor", it.toHexRgb()) }
     if (business.length() > 0) cfg.put("business", business)
-    val widgetScript = if (bundledJs != null) "<script>$bundledJs</script>" else "<script src=\"$widgetUrl\"></script>"
+    // Prefer the bundled widget. Honour an explicit override. With neither, fail
+    // closed — never reach for a remote script. AddressIQVerifyActivity guards
+    // this case up front; this check keeps flowHtml safe on its own.
+    val widgetScript = when {
+        bundledJs != null -> "<script>$bundledJs</script>"
+        widgetUrl != null -> "<script src=\"$widgetUrl\"></script>"
+        else -> error(
+            "AddressIQ: bundled widget (assets/iqcollect.js) missing and no widgetUrl override. " +
+                "Refusing to load the widget from a remote host.",
+        )
+    }
     return """
     <!doctype html><html><head>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />

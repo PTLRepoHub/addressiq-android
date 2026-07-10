@@ -36,9 +36,29 @@ class AddressIQVerifyActivity : ComponentActivity() {
 
         val theme = mergeTheme(input.theme)
 
-        val defaultWidgetUrl = "https://cdn.addressiq.com/v0.1.0/iqcollect.js"
         val apiUrl = input.apiUrlOverride ?: input.environment.defaultApiUrl()
-        val widgetUrl = input.widgetUrl ?: defaultWidgetUrl
+
+        // There is deliberately NO default remote widget URL. The widget ships
+        // as an asset (src/main/assets/iqcollect.js). If it is missing the AAR
+        // is broken, and silently fetching a script from a CDN into this WebView
+        // — alongside the session config — would turn a packaging bug into
+        // remote code execution. Fail closed.
+        //
+        // `input.widgetUrl` remains an explicit developer override for serving a
+        // local bundle during development.
+        val widgetUrl = input.widgetUrl
+        val bundledPresent = runCatching { assets.open("iqcollect.js").close() }.isSuccess
+        if (!bundledPresent && widgetUrl == null) {
+            finishWith(
+                AddressIQVerifyResult.Failed(
+                    "WIDGET_BUNDLE_MISSING",
+                    "The bundled widget (assets/iqcollect.js) is missing from the AddressIQ " +
+                        "SDK and no widgetUrl override was supplied. This is a packaging bug; " +
+                        "the SDK will not load the widget from a remote host.",
+                ),
+            )
+            return
+        }
 
         setContent {
             CompositionLocalProvider(LocalAddressIQTheme provides theme) {
