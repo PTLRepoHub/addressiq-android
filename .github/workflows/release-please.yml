@@ -1,0 +1,40 @@
+name: release-please
+
+# Maintains a "chore: release X.Y.Z" PR from Conventional Commits on main.
+# Merging that PR writes CHANGELOG.md, bumps the version, and pushes tag vX.Y.Z.
+#
+# The tag is what triggers release.yml (which publishes to the registry).
+# GitHub does NOT fire workflows for events created with the default
+# GITHUB_TOKEN, so this job mints a GitHub App token instead — an App-authored
+# tag push *does* trigger release.yml.
+#
+# Required secrets: ADDRESSIQ_BOT_APP_ID, ADDRESSIQ_BOT_PRIVATE_KEY
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.ADDRESSIQ_BOT_APP_ID }}
+          private-key: ${{ secrets.ADDRESSIQ_BOT_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

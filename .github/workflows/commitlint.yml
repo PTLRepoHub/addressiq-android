@@ -1,0 +1,23 @@
+name: commitlint
+
+# release-please derives versions and changelogs from Conventional Commits.
+# Without this gate a malformed commit silently yields no release at all.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: commitlint.config.mjs

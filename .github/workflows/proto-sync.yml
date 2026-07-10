@@ -17,6 +17,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: .proto-version agrees with buf.gen.yaml pin
+        run: |
+          set -euo pipefail
+          if [ ! -f .proto-version ]; then
+            echo "::notice::.proto-version absent - proto pin not yet adopted (pre-fanout). Skipping."
+            exit 0
+          fi
+          want=$(cat .proto-version)
+          have=$(grep -E "^[[:space:]]*tag:" buf.gen.yaml | head -1 | sed -E "s#^[[:space:]]*tag:[[:space:]]*##")
+          if [ "$want" != "$have" ]; then
+            echo "::error::.proto-version ($want) != buf.gen.yaml tag ($have)" >&2
+            exit 1
+          fi
+          echo "proto pin: $want"
       - uses: bufbuild/buf-action@v1
         with:
           setup_only: true
