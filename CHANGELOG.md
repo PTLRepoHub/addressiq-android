@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.1.0...v0.2.0) (2026-07-10)
+
+
+### Features
+
+* **proto:** regen against proto v0.1.0 ([#4](https://github.com/PTLRepoHub/addressiq-android/issues/4)) ([4d9c430](https://github.com/PTLRepoHub/addressiq-android/commit/4d9c43084bb778af26069d9da1912562d9f01de5))
+
 ## 0.1.0 (2026-07-10)
 
 
