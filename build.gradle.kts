@@ -35,6 +35,7 @@ android {
         minSdk = 24
         targetSdk = 36
         consumerProguardFiles("consumer-rules.pro")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -106,6 +107,14 @@ dependencies {
 
     // ── JVM unit tests (./gradlew test) ──
     testImplementation("junit:junit:4.13.2")
+    // Real org.json impl so JVM unit tests can parse bridge JSON (the android.jar
+    // stub throws "not mocked" for org.json).
+    testImplementation("org.json:json:20240303")
+
+    // ── Instrumented tests (./gradlew connectedDebugAndroidTest) ──
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.1")
+    androidTestImplementation("androidx.test:rules:1.6.1")
 }
 
 publishing {

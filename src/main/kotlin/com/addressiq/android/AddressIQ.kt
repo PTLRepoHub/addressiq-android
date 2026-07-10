@@ -256,6 +256,17 @@ object AddressIQ {
     fun openSettings(context: android.content.Context): Boolean =
         com.addressiq.android.permissions.PermissionRequester.openSettings(context)
 
+    /** Precise-vs-approximate accuracy state: `{GRANTED, REDUCED, NOT_DETERMINED}`. */
+    fun getAccuracyState(context: android.content.Context): String =
+        com.addressiq.android.permissions.PermissionRequester.accuracyState(context)
+
+    /**
+     * Drive the OS toward precise (FINE) + background/Always — the combination
+     * verification needs — and return the final permission snapshot.
+     */
+    suspend fun requestPreciseAndAlways(activity: android.app.Activity): Map<String, String> =
+        com.addressiq.android.permissions.PermissionRequester.requestPreciseAndAlways(activity)
+
     /**
      * Legacy-Activity fallback bridge. Partners hosting AddressIQ from
      * a plain `Activity` (no AndroidX) must forward their

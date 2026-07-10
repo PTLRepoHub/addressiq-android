@@ -97,23 +97,32 @@ val LocalAddressIQTheme = compositionLocalOf { DEFAULT_THEME }
 /**
  * Merge a partial token override on top of [DEFAULT_THEME]. When the
  * partner provides only `primary`, this auto-derives `primaryDark`,
- * `primaryLight`, `borderFocused`, and `textLink` so a single brand
- * color yields a coherent palette (matches the RN SDK's behavior).
+ * `primaryLight`, `borderFocused`, and `textLink`; when they provide
+ * only `secondary`, it auto-derives `secondaryDark` and `secondaryLight`
+ * — so a single brand color yields a coherent palette (matches the RN
+ * SDK's `mergeTheme` behavior).
  */
 fun mergeTheme(overrides: AddressIQThemeOverrides?): AddressIQTheme {
     if (overrides == null) return DEFAULT_THEME
 
     val primary = overrides.primary
-    val derived = if (primary != null) {
-        DEFAULT_THEME.copy(
+    val secondary = overrides.secondary
+    var derived = DEFAULT_THEME
+    if (primary != null) {
+        derived = derived.copy(
             primary = primary,
             primaryDark = overrides.primaryDark ?: darken(primary, 0.15f),
             primaryLight = overrides.primaryLight ?: lighten(primary, 0.90f),
             borderFocused = overrides.borderFocused ?: primary,
             textLink = overrides.textLink ?: primary,
         )
-    } else {
-        DEFAULT_THEME
+    }
+    if (secondary != null) {
+        derived = derived.copy(
+            secondary = secondary,
+            secondaryDark = overrides.secondaryDark ?: darken(secondary, 0.15f),
+            secondaryLight = overrides.secondaryLight ?: lighten(secondary, 0.90f),
+        )
     }
 
     return derived.copy(

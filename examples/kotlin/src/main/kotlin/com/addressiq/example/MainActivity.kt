@@ -59,7 +59,7 @@ import com.addressiq.android.ui.AddressIQVerifyResult
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-private const val API_URL = "https://api.addressiq.com"
+private const val API_URL = "https://api.addressiqpro.com"
 private const val API_KEY = "aiq_test_demo_bank_seed01"
 
 /**
@@ -98,6 +98,11 @@ class MainActivity : ComponentActivity() {
                                 apiKey = API_KEY,
                                 appUserId = vm.appUserId,
                                 environment = vm.environment,
+                                // Fallback name; the widget fetches the real
+                                // business identity from the backend.
+                                businessName = vm.businessName.ifBlank { null },
+                                // Point at a local backend for development.
+                                apiUrlOverride = vm.localApiUrl.ifBlank { null },
                             ),
                         )
                     },
@@ -112,6 +117,12 @@ class SampleViewModel : ViewModel() {
     var apiKey by mutableStateOf(API_KEY)
     var appUserId by mutableStateOf("cust_sample_001")
     var environment by mutableStateOf(AddressIQEnvironment.SANDBOX)
+
+    // Demo / local-dev options.
+    /** Fallback business name; the widget normally gets it from the backend. */
+    var businessName by mutableStateOf("Kuda Business")
+    /** Point the widget's API at a local backend (e.g. http://localhost:3355). */
+    var localApiUrl by mutableStateOf("")
 
     // Session-derived state.
     var loggedIn by mutableStateOf(false)
@@ -318,6 +329,9 @@ private fun LoginScreen(vm: SampleViewModel) {
                 FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.SANDBOX }) { Text("Sandbox") }
                 FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.PRODUCTION }) { Text("Production") }
             }
+            Text("Local development", fontSize = 13.sp, color = MaterialTheme.colorScheme.outline)
+            OutlinedTextField(value = vm.localApiUrl, onValueChange = { vm.localApiUrl = it }, label = { Text("Local API URL (optional)") }, placeholder = { Text("http://10.0.2.2:3355") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = vm.businessName, onValueChange = { vm.businessName = it }, label = { Text("Business name (fallback)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             FilledTonalButton(onClick = { vm.login() }, modifier = Modifier.fillMaxWidth()) { Text("Continue") }
             Text("Calls initialize() then setUser().", color = MaterialTheme.colorScheme.outline, fontSize = 12.sp)

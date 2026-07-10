@@ -81,8 +81,21 @@ internal object PermissionRequester {
         return mapOf(
             "foregroundLocation" to fg,
             "backgroundLocation" to bg,
+            "preciseLocation" to accuracyState(context),
             "notifications" to notifications,
         )
+    }
+
+    /**
+     * Precise-vs-approximate accuracy. Cross-SDK value set:
+     * `{GRANTED, REDUCED, NOT_DETERMINED}`. On Android 12+ the user can grant
+     * approximate (COARSE) while denying precise (FINE) — that surfaces as
+     * REDUCED so the flow can re-prompt for precise. FINE granted → GRANTED.
+     */
+    fun accuracyState(context: Context): String = when {
+        isGranted(context, Manifest.permission.ACCESS_FINE_LOCATION) -> GRANTED
+        isGranted(context, Manifest.permission.ACCESS_COARSE_LOCATION) -> "REDUCED"
+        else -> NOT_DETERMINED
     }
 
     fun shouldShowRationale(activity: Activity): Map<String, Boolean> {
@@ -160,6 +173,28 @@ internal object PermissionRequester {
 
         // Final state — but use the rationale-aware computation so
         // permanently-denied perms surface as BLOCKED rather than DENIED.
+        return computePostRequestState(activity)
+    }
+
+    /**
+     * Drive the OS toward the combination address verification needs: precise
+     * (FINE) + background/Always. Runs the standard sequence, then — mirroring
+     * the widget's "keep re-prompting until Precise is on" screen — re-requests
+     * FINE if the user only granted approximate. Returns the final state.
+     */
+    suspend fun requestPreciseAndAlways(activity: Activity): Map<String, String> {
+        requestPermissions(activity)
+        // If the user granted approximate only, re-prompt for precise (Android
+        // 12+ shows an upgrade prompt for FINE alongside a held COARSE grant).
+        if (accuracyState(activity) == "REDUCED") {
+            requestRaw(
+                activity,
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+        }
         return computePostRequestState(activity)
     }
 
