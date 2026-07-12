@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.4.0...v0.5.0) (2026-07-12)
+
+
+### Features
+
+* implement Android transit-event telemetry ingestion ([#11](https://github.com/PTLRepoHub/addressiq-android/issues/11)) ([485b4f3](https://github.com/PTLRepoHub/addressiq-android/commit/485b4f37318d35483af08703cb4576d4aa7fcfc4))
+* **widget:** re-vendor iqcollect.js from web v0.4.0 ([#10](https://github.com/PTLRepoHub/addressiq-android/issues/10)) ([af6490b](https://github.com/PTLRepoHub/addressiq-android/commit/af6490bb7ec53332532fdd43c577e5ca0888f609))
+* **widget:** re-vendor iqcollect.js from web v0.4.1 ([#14](https://github.com/PTLRepoHub/addressiq-android/issues/14)) ([cf92443](https://github.com/PTLRepoHub/addressiq-android/commit/cf92443a63d3ab4e19571688c5360eb6c86b3bd5))
+
+
+### Bug Fixes
+
+* make SDK API-safe on minSdk 24 and gate lint in CI ([#13](https://github.com/PTLRepoHub/addressiq-android/issues/13)) ([982ef1a](https://github.com/PTLRepoHub/addressiq-android/commit/982ef1abac5b7d5be2b36cf67cef9a4feb8906c8))
+
 ## [0.4.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.3.0...v0.4.0) (2026-07-12)
 
 
