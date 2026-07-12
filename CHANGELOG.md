@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.6.0...v0.7.0) (2026-07-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* `AddressIQEnvironment.SANDBOX` is renamed to `STAGING`. A deprecated companion `@JvmField val SANDBOX` keeps references compiling, but Kotlin enums cannot carry a deprecated alias *entry* — so a Java `switch (env) { case SANDBOX: }` will NO LONGER COMPILE. Kotlin and Swift callers are unaffected.
+
+### Features
+
+* per-environment build config and CDN widget loading ([#17](https://github.com/PTLRepoHub/addressiq-android/issues/17)) ([1da1f20](https://github.com/PTLRepoHub/addressiq-android/commit/1da1f20dd7a77571d7d13ebef466ebf8692c7566))
+* **widget:** re-vendor iqcollect.js from web v0.5.1 ([#20](https://github.com/PTLRepoHub/addressiq-android/issues/20)) ([9f0abe8](https://github.com/PTLRepoHub/addressiq-android/commit/9f0abe804a5d6455c9cbed088af7db9999c3950d))
+
 ## [0.6.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.5.0...v0.6.0) (2026-07-12)
 
 
