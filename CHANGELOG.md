@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.3.0...v0.4.0) (2026-07-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* removed AddressIQConfig.apiUrl and AddressIQVerifyInput apiUrlOverride. Select a host via `environment` (PRODUCTION | SANDBOX | DEVELOPMENT); production is provisioned at build time.
+
+### Features
+
+* provision API URL (+ web: Maps key) at build time from GH env ([#8](https://github.com/PTLRepoHub/addressiq-android/issues/8)) ([32efe56](https://github.com/PTLRepoHub/addressiq-android/commit/32efe562c277c58157eb1d8003dd1483582ab7df))
+
 ## [0.3.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.2.0...v0.3.0) (2026-07-12)
 
 
