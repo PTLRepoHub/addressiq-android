@@ -4,6 +4,8 @@ package com.addressiq.android
 
 import android.content.Context
 import com.addressiq.android.geofence.AddressIQGeofenceController
+import com.addressiq.android.storage.AddressIQTelemetryQueue
+import com.addressiq.android.storage.TinkSecureKeyValueStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,6 +14,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -121,6 +125,18 @@ object AddressIQ {
     @Volatile private var activeLocationCode: String? = null
     @Volatile private var pausedAtMs: Long? = null
     @Volatile private var state: AddressIQLifecycleState = AddressIQLifecycleState.UNINITIALIZED
+    @Volatile private var telemetryQueueReady = false
+
+    /**
+     * SDK version stamped into every transit event's `sdkVersion` field.
+     * Mirrors the Flutter/iOS event envelope. No `BuildConfig.VERSION_NAME`
+     * is emitted for this AAR, so this is a hand-maintained constant kept in
+     * step with the released package version.
+     */
+    private const val SDK_VERSION = "0.3.0"
+
+    /** SecureKeyValueStore alias for the SQLCipher telemetry DB cipher key. */
+    private const val TELEMETRY_CIPHER_KEY_ALIAS = "addressiq_telemetry_cipher_key"
 
     private val _stateFlow = MutableStateFlow(getVerificationStateSnapshot())
     val stateFlow: StateFlow<VerificationLifecycleState> = _stateFlow.asStateFlow()
@@ -167,10 +183,55 @@ object AddressIQ {
         emitStateChange()
     }
 
-    suspend fun sync(): Int {
-        // Telemetry queue flush — wires up alongside the protobuf-aligned
-        // envelope migration (P3.7). Stub returns 0 today.
-        return 0
+    /**
+     * Drain the telemetry queue to the ingest endpoint and return how many
+     * events were shipped. Mirrors iOS `sync()`: snapshot the queue depth,
+     * flush one batch (≤50) to `POST {ingest}/v1/transit-events/batch`, and
+     * report `before - after`. Safe to call before the queue is initialized —
+     * returns 0. Prefer [sync] (the context overload) from background workers
+     * so the queue is guaranteed initialized first.
+     */
+    suspend fun sync(): Int = withContext(Dispatchers.IO) {
+        val queue = runCatching { AddressIQTelemetryQueue.shared() }.getOrNull()
+            ?: return@withContext 0
+        val before = queue.count()
+        flushTelemetryQueue()
+        val after = queue.count()
+        maxOf(0, before - after)
+    }
+
+    /**
+     * Context-bearing [sync] overload for background call sites (the
+     * [com.addressiq.android.work.TelemetrySyncWorker]). Lazily + idempotently
+     * initializes the SQLCipher telemetry queue from the secure store before
+     * draining. Non-breaking: the public [sync] signature is unchanged.
+     */
+    internal suspend fun sync(context: Context): Int {
+        ensureTelemetryQueue(context)
+        return sync()
+    }
+
+    /**
+     * Dequeue one batch (≤50) and ship it as `{"events":[…]}` to the ingest
+     * host. On HTTP 2xx the shipped rows are acknowledged (deleted); otherwise
+     * they stay queued for the next retry. Best-effort — never throws.
+     */
+    private suspend fun flushTelemetryQueue() = withContext(Dispatchers.IO) {
+        val cfg = config ?: return@withContext
+        val queue = runCatching { AddressIQTelemetryQueue.shared() }.getOrNull()
+            ?: return@withContext
+        val batch = queue.dequeue(50)
+        if (batch.isEmpty()) return@withContext
+        val body = "{\"events\":[" + batch.joinToString(",") { it.payload } + "]}"
+        val req = Request.Builder()
+            .url("${cfg.resolvedIngestUrl}/v1/transit-events/batch")
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .header("x-api-key", cfg.apiKey)
+            .build()
+        val ok = runCatching {
+            http.newCall(req).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+        if (ok) queue.acknowledge(batch.map { it.rowId })
     }
 
     suspend fun logout() {
@@ -441,8 +502,97 @@ object AddressIQ {
      */
     fun flushTelemetryBestEffort(context: Context) {
         runCatching {
-            com.addressiq.android.storage.AddressIQTelemetryQueue.shared().count()
+            ensureTelemetryQueue(context)
+            androidx.work.WorkManager.getInstance(context.applicationContext).enqueue(
+                androidx.work.OneTimeWorkRequestBuilder<com.addressiq.android.work.TelemetrySyncWorker>().build(),
+            )
         }
+    }
+
+    // ── Telemetry producer ─────────────────────────────────────────────────
+
+    /**
+     * Idempotently initialize the SQLCipher telemetry queue. The cipher key is
+     * generated once and persisted in the Keystore-backed [SecureKeyValueStore]
+     * so the encrypted DB survives process death. Called from the
+     * context-bearing sites (worker, receiver, activateCollection) so the
+     * public `initialize(config)` signature stays context-free (non-breaking).
+     */
+    private fun ensureTelemetryQueue(context: Context) {
+        if (telemetryQueueReady) return
+        synchronized(this) {
+            if (telemetryQueueReady) return
+            runCatching {
+                val store = TinkSecureKeyValueStore(context.applicationContext)
+                val cipherKey = store.get(TELEMETRY_CIPHER_KEY_ALIAS) ?: run {
+                    val generated = UUID.randomUUID().toString().replace("-", "") +
+                        UUID.randomUUID().toString().replace("-", "")
+                    store.put(TELEMETRY_CIPHER_KEY_ALIAS, generated)
+                    generated
+                }
+                AddressIQTelemetryQueue.init(context.applicationContext, cipherKey)
+                telemetryQueueReady = true
+            }
+        }
+    }
+
+    /**
+     * Serialize a geofence transition into the cross-SDK transit-event JSON
+     * envelope and enqueue it for the next [sync]. Ensures the queue is
+     * initialized first. Returns the generated `eventId`. Best-effort — a
+     * persistence failure never propagates to the OS broadcast receiver.
+     */
+    internal fun enqueueTransitEvent(
+        context: Context,
+        locationCode: String,
+        eventType: String,
+        lat: Double?,
+        lon: Double?,
+        accuracyM: Double?,
+    ): String? = runCatching {
+        ensureTelemetryQueue(context)
+        val eventId = "iqevt_android_${UUID.randomUUID().toString().replace("-", "")}"
+        val payload = buildTransitEventJson(eventId, locationCode, eventType, lat, lon, accuracyM)
+        AddressIQTelemetryQueue.shared().enqueue(eventId, payload)
+        eventId
+    }.getOrNull()
+
+    /**
+     * Build one transit-event JSON object matching the iOS/Flutter event
+     * envelope (`LocationEvent.toJson` + `locationId`). `eventType` is one of
+     * the `TransitEventType` string tokens: `GEOFENCE_ENTER`, `GEOFENCE_EXIT`,
+     * `DWELL`, `BACKGROUND_CHECK`.
+     */
+    internal fun buildTransitEventJson(
+        eventId: String,
+        locationCode: String,
+        eventType: String,
+        lat: Double?,
+        lon: Double?,
+        accuracyM: Double?,
+        deviceTs: String = iso8601UtcNow(),
+    ): String = buildJsonObject {
+        put("eventId", eventId)
+        put("locationId", locationCode)
+        put("eventType", eventType)
+        lat?.let { put("lat", it) }
+        lon?.let { put("lon", it) }
+        accuracyM?.let { put("accuracyM", it) }
+        put("deviceTs", deviceTs)
+        put("deviceOs", "ANDROID")
+        put("sdkVersion", SDK_VERSION)
+    }.toString()
+
+    /**
+     * ISO-8601 UTC timestamp (e.g. `2026-07-12T14:50:00.123Z`) matching the
+     * Flutter `deviceTs` format. Uses `SimpleDateFormat` (API 1+) rather than
+     * `java.time.Instant`, which requires API 26+ / core-library desugaring —
+     * this module's `minSdk` is 24.
+     */
+    private fun iso8601UtcNow(): String {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+        fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return fmt.format(java.util.Date())
     }
 
     // ── Internal ──────────────────────────────────────────────────────────

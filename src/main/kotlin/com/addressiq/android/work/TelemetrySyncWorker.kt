@@ -21,7 +21,7 @@ public class TelemetrySyncWorker(
 
     override suspend fun doWork(): Result =
         try {
-            AddressIQ.sync()
+            AddressIQ.sync(applicationContext)
             Result.success()
         } catch (_: Throwable) {
             Result.retry()
