@@ -201,22 +201,14 @@ step).
 
 ## Environment
 
-`AddressIQEnvironment` resolves the API base URL:
+`AddressIQEnvironment` selects the backend — integrators just choose one; the
+API and transit-event ingest hosts are resolved entirely from it, so you never
+pass a URL:
 
-- `PRODUCTION` → the URL baked into the published AAR at build time
-  (defaults to `https://api.addressiqpro.com`; CI injects it from the
-  `ADDRESSIQ_API_URL` repository variable via `-PaddressiqApiUrl=...`).
-- `SANDBOX` → `https://api-staging.addressiqpro.com`
-- `DEVELOPMENT` → `http://10.0.2.2:3355` (the host machine's localhost as
-  seen from the Android emulator; for running against a local backend).
-
-Transit events are ingested through a dedicated host, resolved separately:
-
-- `PRODUCTION` → the ingest URL baked into the published AAR at build time
-  (defaults to `https://ingest-api.addressiqpro.com`; CI injects it from the
-  `ADDRESSIQ_INGEST_URL` repository variable via `-PaddressiqIngestUrl=...`).
-- `SANDBOX` → `https://ingest-api-staging.addressiqpro.com`
-- `DEVELOPMENT` → `http://10.0.2.2:3355`.
+- `PRODUCTION` — the hosted AddressIQ platform.
+- `SANDBOX` — the staging platform.
+- `DEVELOPMENT` — a backend running on your host machine, reachable from the
+  Android emulator; use this only for local development, never in a shipped app.
 
 ## Errors
 
