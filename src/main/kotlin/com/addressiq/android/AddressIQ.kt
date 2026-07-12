@@ -33,6 +33,17 @@ enum class AddressIQEnvironment {
         // Android emulator reaches the host machine's localhost via 10.0.2.2.
         DEVELOPMENT -> "http://10.0.2.2:3355"
     }
+
+    /** Dedicated transit-event ingest host the SDK resolves to. */
+    public fun defaultIngestUrl(): String = when (this) {
+        // Baked into the AAR at build time from the `addressiqIngestUrl` Gradle
+        // property (GitHub `ADDRESSIQ_INGEST_URL` var); defaults to the public
+        // ingest URL.
+        PRODUCTION -> BuildConfig.ADDRESSIQ_INGEST_URL
+        SANDBOX -> "https://ingest-api-staging.addressiqpro.com"
+        // Android emulator reaches the host machine's localhost via 10.0.2.2.
+        DEVELOPMENT -> "http://10.0.2.2:3355"
+    }
 }
 
 @Serializable
@@ -42,6 +53,9 @@ data class AddressIQConfig(
 ) {
     /** Effective API URL, resolved from [environment]. */
     val resolvedApiUrl: String get() = environment.defaultApiUrl()
+
+    /** Effective transit-event ingest URL, resolved from [environment]. */
+    val resolvedIngestUrl: String get() = environment.defaultIngestUrl()
 }
 
 @Serializable

@@ -210,6 +210,14 @@ step).
 - `DEVELOPMENT` → `http://10.0.2.2:3355` (the host machine's localhost as
   seen from the Android emulator; for running against a local backend).
 
+Transit events are ingested through a dedicated host, resolved separately:
+
+- `PRODUCTION` → the ingest URL baked into the published AAR at build time
+  (defaults to `https://ingest-api.addressiqpro.com`; CI injects it from the
+  `ADDRESSIQ_INGEST_URL` repository variable via `-PaddressiqIngestUrl=...`).
+- `SANDBOX` → `https://ingest-api-staging.addressiqpro.com`
+- `DEVELOPMENT` → `http://10.0.2.2:3355`.
+
 ## Errors
 
 `AddressIQError` (sealed):

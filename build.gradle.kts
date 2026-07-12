@@ -49,6 +49,16 @@ android {
             "ADDRESSIQ_API_URL",
             "\"${project.findProperty("addressiqApiUrl") ?: "https://api.addressiqpro.com"}\"",
         )
+        // Dedicated transit-event ingest host, baked into the compiled AAR at
+        // build time. CI injects the real value via `-PaddressiqIngestUrl=...`
+        // (from the GitHub `ADDRESSIQ_INGEST_URL` variable); local/default
+        // builds fall back to the public URL. Consumed by
+        // AddressIQEnvironment.PRODUCTION.defaultIngestUrl().
+        buildConfigField(
+            "String",
+            "ADDRESSIQ_INGEST_URL",
+            "\"${project.findProperty("addressiqIngestUrl") ?: "https://ingest-api.addressiqpro.com"}\"",
+        )
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
