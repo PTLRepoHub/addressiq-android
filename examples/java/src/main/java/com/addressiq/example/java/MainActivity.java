@@ -206,14 +206,13 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void launchCollect() {
-        // 14-arg data-class constructor: Java can't use Kotlin default args, so
+        // 13-arg data-class constructor: Java can't use Kotlin default args, so
         // fill the optional slots with null. Order matches AddressIQVerifyInput.
         AddressIQVerifyInput input = new AddressIQVerifyInput(
                 text(apiKeyField),                 // apiKey
                 text(appUserIdField),              // appUserId
                 environment,                       // environment
                 null, null, null, null,            // phone, firstName, lastName, email
-                null,                              // googleMapsApiKey
                 null,                              // theme
                 null, null,                        // privacyPolicyUrl, termsUrl
                 blankToNull(text(businessNameField)), // businessName

@@ -64,9 +64,6 @@ data class AddressIQVerifyInput(
     val firstName: String? = null,
     val lastName: String? = null,
     val email: String? = null,
-    /** Google Maps API key — enables the address map flow (autocomplete, pin,
-     *  reverse geocode, Street View). When null the step degrades to manual entry. */
-    val googleMapsApiKey: String? = null,
     val theme: AddressIQThemeOverrides? = null,
     val privacyPolicyUrl: String? = null,
     val termsUrl: String? = null,
