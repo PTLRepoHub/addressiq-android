@@ -36,7 +36,7 @@ class AddressIQVerifyActivity : ComponentActivity() {
 
         val theme = mergeTheme(input.theme)
 
-        val apiUrl = input.apiUrlOverride ?: input.environment.defaultApiUrl()
+        val apiUrl = input.environment.defaultApiUrl()
 
         // There is deliberately NO default remote widget URL. The widget ships
         // as an asset (src/main/assets/iqcollect.js). If it is missing the AAR

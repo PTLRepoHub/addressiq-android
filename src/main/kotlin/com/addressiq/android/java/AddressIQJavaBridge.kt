@@ -32,7 +32,7 @@ import java.util.concurrent.CompletableFuture
  *
  * ```java
  * AddressIQJava.initialize(
- *   new AddressIQConfig("aiq_live_...", AddressIQEnvironment.PRODUCTION, null)
+ *   new AddressIQConfig("aiq_live_...", AddressIQEnvironment.PRODUCTION)
  * );
  *
  * AddressIQJava.setUser(new SdkUser("cust_01J9P7XK", null, null, null, null))
@@ -277,22 +277,13 @@ public object AddressIQJava {
     public class ConfigBuilder internal constructor() {
         private var apiKey: String? = null
         private var environment: AddressIQEnvironment = AddressIQEnvironment.PRODUCTION
-        private var apiUrl: String? = null
 
         public fun apiKey(value: String): ConfigBuilder = apply { this.apiKey = value }
         public fun environment(value: AddressIQEnvironment): ConfigBuilder = apply { this.environment = value }
 
-        /**
-         * Override the env-resolved API base URL. Production
-         * integrations should leave this unset — the SDK resolves the
-         * right URL from `environment`. Override only when routing
-         * through a partner proxy or a hermetic test backend.
-         */
-        public fun apiUrl(value: String?): ConfigBuilder = apply { this.apiUrl = value }
-
         public fun build(): AddressIQConfig {
             val key = requireNotNull(apiKey) { "apiKey is required" }
-            return AddressIQConfig(apiKey = key, environment = environment, apiUrl = apiUrl)
+            return AddressIQConfig(apiKey = key, environment = environment)
         }
     }
 

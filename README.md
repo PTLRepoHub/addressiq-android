@@ -203,11 +203,12 @@ step).
 
 `AddressIQEnvironment` resolves the API base URL:
 
-- `PRODUCTION` → `https://api.addressiqpro.com`
+- `PRODUCTION` → the URL baked into the published AAR at build time
+  (defaults to `https://api.addressiqpro.com`; CI injects it from the
+  `ADDRESSIQ_API_URL` repository variable via `-PaddressiqApiUrl=...`).
 - `SANDBOX` → `https://api-staging.addressiqpro.com`
-
-Override via `AddressIQConfig.apiUrl` only when routing through a partner
-proxy or a hermetic test backend.
+- `DEVELOPMENT` → `http://10.0.2.2:3355` (the host machine's localhost as
+  seen from the Android emulator; for running against a local backend).
 
 ## Errors
 

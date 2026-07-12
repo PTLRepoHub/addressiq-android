@@ -52,18 +52,28 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          # Production API URL baked into the AAR; empty when the var is unset,
+          # in which case the build.gradle.kts default applies.
+          ADDRESSIQ_API_URL: ${{ vars.ADDRESSIQ_API_URL }}
           CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           set -euo pipefail
+          # Bake the production API URL into the AAR from the repo variable when
+          # set; the build.gradle.kts default (https://api.addressiqpro.com)
+          # applies otherwise.
+          API_URL_ARG=()
+          if [ -n "${ADDRESSIQ_API_URL:-}" ]; then
+            API_URL_ARG=(-PaddressiqApiUrl="$ADDRESSIQ_API_URL")
+          fi
           if [ "${{ github.event_name }}" = "push" ]; then
             V="${GITHUB_REF_NAME#v}"
-            gradle publish -PVERSION="$V" --no-daemon
+            gradle publish -PVERSION="$V" "${API_URL_ARG[@]}" --no-daemon
             echo "staged=true" >> "$GITHUB_OUTPUT"
           else
-            gradle publishToMavenLocal -PVERSION="0.0.0-SNAPSHOT" --no-daemon
+            gradle publishToMavenLocal -PVERSION="0.0.0-SNAPSHOT" "${API_URL_ARG[@]}" --no-daemon
             echo "staged=false" >> "$GITHUB_OUTPUT"
           fi
 

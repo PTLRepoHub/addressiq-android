@@ -59,7 +59,6 @@ import com.addressiq.android.ui.AddressIQVerifyResult
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-private const val API_URL = "https://api.addressiqpro.com"
 private const val API_KEY = "aiq_test_demo_bank_seed01"
 
 /**
@@ -101,8 +100,6 @@ class MainActivity : ComponentActivity() {
                                 // Fallback name; the widget fetches the real
                                 // business identity from the backend.
                                 businessName = vm.businessName.ifBlank { null },
-                                // Point at a local backend for development.
-                                apiUrlOverride = vm.localApiUrl.ifBlank { null },
                             ),
                         )
                     },
@@ -118,11 +115,9 @@ class SampleViewModel : ViewModel() {
     var appUserId by mutableStateOf("cust_sample_001")
     var environment by mutableStateOf(AddressIQEnvironment.SANDBOX)
 
-    // Demo / local-dev options.
+    // Demo options.
     /** Fallback business name; the widget normally gets it from the backend. */
     var businessName by mutableStateOf("Kuda Business")
-    /** Point the widget's API at a local backend (e.g. http://localhost:3355). */
-    var localApiUrl by mutableStateOf("")
 
     // Session-derived state.
     var loggedIn by mutableStateOf(false)
@@ -178,7 +173,7 @@ class SampleViewModel : ViewModel() {
 
     fun login() = viewModelScope.launch {
         runCatching {
-            AddressIQ.initialize(AddressIQConfig(apiKey = apiKey, apiUrl = API_URL, environment = environment))
+            AddressIQ.initialize(AddressIQConfig(apiKey = apiKey, environment = environment))
             AddressIQ.setUser(SdkUser(appUserId = appUserId, firstName = "Sample"))
         }.onSuccess {
             loggedIn = true
@@ -328,9 +323,10 @@ private fun LoginScreen(vm: SampleViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.SANDBOX }) { Text("Sandbox") }
                 FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.PRODUCTION }) { Text("Production") }
+                // DEVELOPMENT resolves the API base URL to http://10.0.2.2:3355,
+                // the host machine's localhost as seen from the Android emulator.
+                FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.DEVELOPMENT }) { Text("Development") }
             }
-            Text("Local development", fontSize = 13.sp, color = MaterialTheme.colorScheme.outline)
-            OutlinedTextField(value = vm.localApiUrl, onValueChange = { vm.localApiUrl = it }, label = { Text("Local API URL (optional)") }, placeholder = { Text("http://10.0.2.2:3355") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = vm.businessName, onValueChange = { vm.businessName = it }, label = { Text("Business name (fallback)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             FilledTonalButton(onClick = { vm.login() }, modifier = Modifier.fillMaxWidth()) { Text("Continue") }

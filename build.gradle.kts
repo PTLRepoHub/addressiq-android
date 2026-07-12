@@ -39,6 +39,16 @@ android {
         targetSdk = 36
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Production API base URL, baked into the compiled AAR bytecode at
+        // build time. CI injects the real value via `-PaddressiqApiUrl=...`
+        // (from the GitHub `ADDRESSIQ_API_URL` variable); local/default builds
+        // fall back to the public URL. Consumed by
+        // AddressIQEnvironment.PRODUCTION.defaultApiUrl().
+        buildConfigField(
+            "String",
+            "ADDRESSIQ_API_URL",
+            "\"${project.findProperty("addressiqApiUrl") ?: "https://api.addressiqpro.com"}\"",
+        )
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -60,6 +70,9 @@ android {
         // Powers the `AddressIQVerify` activity (ui/ package) — full
         // themed collect + verify flow on top of the AddressIQ singleton.
         compose = true
+        // Emits the generated BuildConfig class so the production API URL can
+        // be baked into the compiled AAR (see ADDRESSIQ_API_URL below).
+        buildConfig = true
     }
 }
 

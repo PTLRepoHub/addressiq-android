@@ -51,7 +51,6 @@ public class MainActivity extends ComponentActivity {
     private EditText apiKeyField;
     private EditText appUserIdField;
     private EditText businessNameField;
-    private EditText localApiUrlField;
     private AddressIQEnvironment environment = AddressIQEnvironment.SANDBOX;
     private Button envButton;
 
@@ -81,7 +80,6 @@ public class MainActivity extends ComponentActivity {
         apiKeyField = field("API key", SEED_KEY);
         appUserIdField = field("App user ID", "cust_sample_001");
         businessNameField = field("Business name (fallback)", "Kuda Business");
-        localApiUrlField = field("Local API URL (optional)", "");
         envButton = button("Environment: " + environment, this::toggleEnvironment);
         button("Continue  (initialize + setUser)", this::login);
 
@@ -182,8 +180,19 @@ public class MainActivity extends ComponentActivity {
     // ── Actions (mirror the Kotlin SampleViewModel) ─────────────────────
 
     private void toggleEnvironment() {
-        environment = environment == AddressIQEnvironment.SANDBOX
-                ? AddressIQEnvironment.PRODUCTION : AddressIQEnvironment.SANDBOX;
+        // Cycle SANDBOX → PRODUCTION → DEVELOPMENT (local backend at
+        // http://10.0.2.2:3355, the emulator's view of the host's localhost).
+        switch (environment) {
+            case SANDBOX:
+                environment = AddressIQEnvironment.PRODUCTION;
+                break;
+            case PRODUCTION:
+                environment = AddressIQEnvironment.DEVELOPMENT;
+                break;
+            default:
+                environment = AddressIQEnvironment.SANDBOX;
+                break;
+        }
         envButton.setText("Environment: " + environment);
     }
 
@@ -192,7 +201,6 @@ public class MainActivity extends ComponentActivity {
             AddressIQJava.initialize(AddressIQJava.config()
                     .apiKey(text(apiKeyField))
                     .environment(environment)
-                    .apiUrl(blankToNull(text(localApiUrlField)))
                     .build());
             log("initialized (" + environment + ")");
         } catch (Exception e) {
@@ -206,7 +214,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void launchCollect() {
-        // 13-arg data-class constructor: Java can't use Kotlin default args, so
+        // 12-arg data-class constructor: Java can't use Kotlin default args, so
         // fill the optional slots with null. Order matches AddressIQVerifyInput.
         AddressIQVerifyInput input = new AddressIQVerifyInput(
                 text(apiKeyField),                 // apiKey
@@ -216,8 +224,7 @@ public class MainActivity extends ComponentActivity {
                 null,                              // theme
                 null, null,                        // privacyPolicyUrl, termsUrl
                 blankToNull(text(businessNameField)), // businessName
-                null,                              // widgetUrl
-                blankToNull(text(localApiUrlField))   // apiUrlOverride
+                null                               // widgetUrl
         );
         verifyLauncher.launch(input);
     }
