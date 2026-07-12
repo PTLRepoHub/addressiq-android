@@ -12,6 +12,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.roundToInt
 import com.addressiq.android.AddressIQ
+import com.addressiq.android.AddressIQEnvironment
+import com.addressiq.android.generated.AddressIQBuildConfig
 import com.addressiq.android.ui.AddressIQVerifyInput
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -37,7 +39,7 @@ import org.json.JSONObject
 fun AddressIQWebFlow(
     input: AddressIQVerifyInput,
     apiUrl: String,
-    /** Explicit developer override. `null` means "use the bundled asset"; there is no remote default. */
+    /** Explicit developer override. `null` means "resolve normally": pinned CDN build, bundled asset as fallback. */
     widgetUrl: String?,
     onCompleted: (locationCode: String, formattedAddress: String?) -> Unit,
     onCancelled: () -> Unit,
@@ -56,8 +58,8 @@ fun AddressIQWebFlow(
                 settings.domStorageEnabled = true
                 val bridge = WebFlowBridge(this, activity, scope, onCompleted, onCancelled, onFailed)
                 addJavascriptInterface(bridge, "AddressIQAndroid")
-                // Prefer the bundled widget (offline, version-pinned); fall back to
-                // the hosted bundle only if the asset is missing.
+                // The bundled asset is always read if present: it is either the only
+                // widget source (no pinned CDN build) or the onerror fallback.
                 val bundled = runCatching {
                     ctx.assets.open("iqcollect.js").bufferedReader().use { it.readText() }
                 }.getOrNull()
@@ -199,6 +201,37 @@ private fun Color.toHexRgb(): String {
     return "#%02X%02X%02X".format(channel(red), channel(green), channel(blue))
 }
 
+/**
+ * The pinned CDN URL of the widget for [environment], or `null` when the CDN
+ * path is unavailable and the bundled asset must be used.
+ *
+ * Unavailable means: `DEVELOPMENT` (the CDN URL there is the dev host, which
+ * serves no versioned widget), or any of the CDN base URL / `widgetVersion` /
+ * `widgetIntegrity` not being baked in. The last case is the norm until
+ * addressiq-web's fanout writes `.widget-version` + `.widget-integrity` — the
+ * SDK is bundled-only until then, by construction rather than by accident.
+ */
+internal fun cdnWidgetUrl(environment: AddressIQEnvironment): String? = cdnWidgetUrl(
+    isDevelopment = environment == AddressIQEnvironment.DEVELOPMENT,
+    cdnBaseUrl = environment.defaultCdnUrl(),
+    widgetVersion = AddressIQBuildConfig.widgetVersion,
+    widgetIntegrity = AddressIQBuildConfig.widgetIntegrity,
+)
+
+/** Pure form of [cdnWidgetUrl], so the preconditions are unit-testable. */
+internal fun cdnWidgetUrl(
+    isDevelopment: Boolean,
+    cdnBaseUrl: String,
+    widgetVersion: String,
+    widgetIntegrity: String,
+): String? {
+    if (isDevelopment) return null
+    if (cdnBaseUrl.isBlank() || widgetVersion.isBlank() || widgetIntegrity.isBlank()) return null
+    // The CDN serves immutable /v{x.y.z}/ paths — that immutability is what makes
+    // pinning an SRI hash to one of them meaningful.
+    return "${cdnBaseUrl.trimEnd('/')}/v$widgetVersion/iqcollect.js"
+}
+
 private fun flowHtml(
     input: AddressIQVerifyInput,
     apiUrl: String,
@@ -226,15 +259,65 @@ private fun flowHtml(
     theme?.primary?.let { business.put("primaryColor", it.toHexRgb()) }
     theme?.secondary?.let { business.put("secondaryColor", it.toHexRgb()) }
     if (business.length() > 0) cfg.put("business", business)
-    // Prefer the bundled widget. Honour an explicit override. With neither, fail
-    // closed — never reach for a remote script. AddressIQVerifyActivity guards
-    // this case up front; this check keeps flowHtml safe on its own.
+
+    return buildFlowHtml(
+        cfgJson = cfg.toString(),
+        widgetUrl = widgetUrl,
+        bundledJs = bundledJs,
+        cdnScriptUrl = cdnWidgetUrl(input.environment),
+        widgetIntegrity = AddressIQBuildConfig.widgetIntegrity,
+    )
+}
+
+/**
+ * Builds the page that mounts the widget. Pure — no Android, no Compose — so the
+ * widget-sourcing decision below is unit-tested rather than emulator-tested.
+ *
+ * Precedence:
+ *  1. [widgetUrl] — explicit developer override, loaded plainly (no SRI: the
+ *     developer chose the host, and a local dev bundle has no stable hash).
+ *  2. [cdnScriptUrl] (see [cdnWidgetUrl]) — loaded with `integrity` +
+ *     `crossorigin="anonymous"`, with [bundledJs] wired up as the `onerror`
+ *     fallback. Chromium enforces SRI, so tampered bytes never execute; they
+ *     fire onerror and we fall back to the vendored bundle. Same for a CDN
+ *     outage or an offline device.
+ *  3. [bundledJs] inline — the only source when there is no pinned CDN build.
+ *
+ * With none of the three, fail closed rather than render a dead page.
+ */
+internal fun buildFlowHtml(
+    cfgJson: String,
+    widgetUrl: String?,
+    bundledJs: String?,
+    cdnScriptUrl: String?,
+    widgetIntegrity: String,
+): String {
     val widgetScript = when {
-        bundledJs != null -> "<script>$bundledJs</script>"
         widgetUrl != null -> "<script src=\"$widgetUrl\"></script>"
+        cdnScriptUrl != null -> {
+            // `__iqWidgetFallback` is DEFINED BEFORE the remote <script>: an immediate
+            // failure (offline, SRI mismatch) would otherwise fire onerror against an
+            // undefined function. The remote script is parser-blocking, so its error
+            // event — and therefore the synchronous inline injection below — completes
+            // before the mount script runs, and window.AddressIQ is there either way.
+            val fallbackBody = if (bundledJs == null) {
+                // No bundle vendored: nothing to fall back to. Surface it loudly.
+                "throw new Error('AddressIQ: widget bundle unavailable');"
+            } else {
+                """
+                var s = document.createElement('script');
+                s.text = ${JSONObject.quote(bundledJs)};
+                document.head.appendChild(s);
+                """.trimIndent()
+            }
+            "<script>\nfunction __iqWidgetFallback() {\n$fallbackBody\n}\n</script>\n" +
+                "<script src=\"$cdnScriptUrl\" integrity=\"$widgetIntegrity\" " +
+                "crossorigin=\"anonymous\" onerror=\"__iqWidgetFallback()\"></script>"
+        }
+        bundledJs != null -> "<script>$bundledJs</script>"
         else -> error(
-            "AddressIQ: bundled widget (assets/iqcollect.js) missing and no widgetUrl override. " +
-                "Refusing to load the widget from a remote host.",
+            "AddressIQ: bundled widget (assets/iqcollect.js) missing, no pinned CDN build, " +
+                "and no widgetUrl override.",
         )
     }
     return """
@@ -245,7 +328,7 @@ private fun flowHtml(
     <div id="mount"></div>
     $widgetScript
     <script>
-      var cfg = $cfg;
+      var cfg = $cfgJson;
       var c = new window.AddressIQ.IQCollect(document.getElementById('mount'), cfg);
       c.open();
     </script>

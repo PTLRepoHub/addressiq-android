@@ -12,28 +12,51 @@ import org.junit.Test
 class SmokeTest {
     @Test
     fun environmentsResolveDistinctApiUrls() {
-        val sandbox = AddressIQEnvironment.SANDBOX.defaultApiUrl()
+        val staging = AddressIQEnvironment.STAGING.defaultApiUrl()
         val production = AddressIQEnvironment.PRODUCTION.defaultApiUrl()
 
-        assertTrue(sandbox.startsWith("https://"))
+        assertTrue(staging.startsWith("https://"))
         assertTrue(production.startsWith("https://"))
-        assertEquals("sandbox and production must differ", false, sandbox == production)
+        assertEquals("staging and production must differ", false, staging == production)
     }
 
     @Test
     fun environmentsResolveDistinctIngestUrls() {
-        val sandbox = AddressIQEnvironment.SANDBOX.defaultIngestUrl()
+        val staging = AddressIQEnvironment.STAGING.defaultIngestUrl()
         val production = AddressIQEnvironment.PRODUCTION.defaultIngestUrl()
 
-        assertTrue(sandbox.startsWith("https://"))
+        assertTrue(staging.startsWith("https://"))
         assertTrue(production.startsWith("https://"))
-        assertEquals("sandbox and production ingest must differ", false, sandbox == production)
+        assertEquals("staging and production ingest must differ", false, staging == production)
         // Ingest is a dedicated host, distinct from the general API host.
         assertEquals(
             "production ingest and api hosts must differ",
             false,
             production == AddressIQEnvironment.PRODUCTION.defaultApiUrl(),
         )
+    }
+
+    @Test
+    fun environmentsResolveDistinctCdnUrls() {
+        val staging = AddressIQEnvironment.STAGING.defaultCdnUrl()
+        val production = AddressIQEnvironment.PRODUCTION.defaultCdnUrl()
+
+        assertTrue(staging.startsWith("https://"))
+        assertTrue(production.startsWith("https://"))
+        assertEquals("staging and production cdn must differ", false, staging == production)
+        // The CDN is a resolved config value only — nothing fetches from it
+        // (the widget ships bundled in assets/iqcollect.js and fails closed).
+        assertEquals(
+            "production cdn and api hosts must differ",
+            false,
+            production == AddressIQEnvironment.PRODUCTION.defaultApiUrl(),
+        )
+    }
+
+    @Test
+    fun deprecatedSandboxAliasResolvesToStaging() {
+        @Suppress("DEPRECATION")
+        assertEquals(AddressIQEnvironment.STAGING, AddressIQEnvironment.SANDBOX)
     }
 
     @Test

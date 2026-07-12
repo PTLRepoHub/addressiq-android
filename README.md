@@ -189,7 +189,7 @@ gradle wrapper            # one-time — generates ./gradlew (skip in Android St
 Start an emulator first for `installDebug` (`emulator -avd <name>` or via
 Android Studio's Device Manager). The example's `apiKey` is hardcoded to the
 seed key `aiq_test_demo_bank_seed01` (editable on-screen) and defaults to the
-`SANDBOX` environment — no credentials file needed.
+`STAGING` environment — no credentials file needed.
 
 The Kotlin example exercises the imperative API (digital + physical start),
 the lifecycle controls, and a **Launch Collect UI** button that drives
@@ -202,13 +202,34 @@ step).
 ## Environment
 
 `AddressIQEnvironment` selects the backend — integrators just choose one; the
-API and transit-event ingest hosts are resolved entirely from it, so you never
-pass a URL:
+API, transit-event ingest, and CDN hosts are resolved entirely from it, so you
+never pass a URL:
 
 - `PRODUCTION` — the hosted AddressIQ platform.
-- `SANDBOX` — the staging platform.
+- `STAGING` — the staging platform. (`SANDBOX` is the deprecated former name
+  and resolves identically.)
 - `DEVELOPMENT` — a backend running on your host machine, reachable from the
   Android emulator; use this only for local development, never in a shipped app.
+
+> **Java callers: `case SANDBOX:` no longer compiles.** `SANDBOX` was renamed to
+> `STAGING`. A deprecated `@JvmField val SANDBOX = STAGING` keeps it resolving
+> (`AddressIQ.kt:82-93`), but a Kotlin enum can't carry a deprecated alias
+> *entry* — so `SANDBOX` is a companion property, **not an enum constant**, and
+> Java `switch` requires enum constants as case labels. Rewrite
+> `switch (env) { case SANDBOX: … }` to use `STAGING`. Merely *referencing*
+> `AddressIQEnvironment.SANDBOX` as a value still works, and Kotlin callers
+> (including `when (env)`) are unaffected.
+
+The `PRODUCTION` and `STAGING` URLs are baked into the published AAR at release
+time by `scripts/bake-build-config.sh --strict`, from the `STAGING_*` / `PROD_*`
+GitHub repository variables; the checked-in generated source
+(`src/main/kotlin/com/addressiq/android/generated/AddressIQBuildConfig.kt`)
+carries the public defaults for local builds. `DEVELOPMENT` is never baked.
+
+`AddressIQConfig.resolvedCdnUrl` exposes the per-environment CDN host, but
+nothing in the SDK fetches from it: the verify widget ships bundled
+(`src/main/assets/iqcollect.js`) and fails closed rather than falling back to a
+remote script.
 
 ## Errors
 
@@ -236,9 +257,16 @@ Push a semver tag (`.github/workflows/release.yml`):
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-Publishes to GitHub Packages (automatic `GITHUB_TOKEN`) and Maven Central
-(needs `OSSRH_*` + GPG `SIGNING_*` secrets). Run manually for a
-`publishToMavenLocal` dry-run.
+Publishes to GitHub Packages (automatic `GITHUB_TOKEN`) and Maven Central. Run
+manually for a `publishToMavenLocal` dry-run.
+
+The workflow first bakes the per-environment URLs into the source with
+`scripts/bake-build-config.sh --strict` (`release.yml:49-57`), which **fails the
+release** if any of the six `STAGING_*` / `PROD_*` GitHub repository variables is
+unset — it will not fall back to the checked-in defaults.
+
+See [`docs/RELEASE.md`](docs/RELEASE.md) for the full flow, the required secrets
+and repository variables, and the versioning rules.
 
 ## Cross-links
 

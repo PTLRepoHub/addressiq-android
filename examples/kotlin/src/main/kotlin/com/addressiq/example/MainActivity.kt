@@ -113,7 +113,7 @@ class SampleViewModel : ViewModel() {
     // Login inputs.
     var apiKey by mutableStateOf(API_KEY)
     var appUserId by mutableStateOf("cust_sample_001")
-    var environment by mutableStateOf(AddressIQEnvironment.SANDBOX)
+    var environment by mutableStateOf(AddressIQEnvironment.STAGING)
 
     // Demo options.
     /** Fallback business name; the widget normally gets it from the backend. */
@@ -321,9 +321,9 @@ private fun LoginScreen(vm: SampleViewModel) {
             OutlinedTextField(value = vm.appUserId, onValueChange = { vm.appUserId = it }, label = { Text("App user ID") }, modifier = Modifier.fillMaxWidth())
             Text("Environment: ${vm.environment.name}")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.SANDBOX }) { Text("Sandbox") }
+                FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.STAGING }) { Text("Staging") }
                 FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.PRODUCTION }) { Text("Production") }
-                // DEVELOPMENT resolves the API base URL to http://10.0.2.2:3355,
+                // DEVELOPMENT resolves the API base URL to http://10.0.2.2:4000,
                 // the host machine's localhost as seen from the Android emulator.
                 FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.DEVELOPMENT }) { Text("Development") }
             }

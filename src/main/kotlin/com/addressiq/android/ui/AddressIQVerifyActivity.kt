@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import com.addressiq.android.theme.LocalAddressIQTheme
 import com.addressiq.android.theme.mergeTheme
 import com.addressiq.android.ui.screens.AddressIQWebFlow
+import com.addressiq.android.ui.screens.cdnWidgetUrl
 
 /**
  * Drop-in verify activity. Launched via [AddressIQVerifyContract] —
@@ -38,23 +39,33 @@ class AddressIQVerifyActivity : ComponentActivity() {
 
         val apiUrl = input.environment.defaultApiUrl()
 
-        // There is deliberately NO default remote widget URL. The widget ships
-        // as an asset (src/main/assets/iqcollect.js). If it is missing the AAR
-        // is broken, and silently fetching a script from a CDN into this WebView
-        // — alongside the session config — would turn a packaging bug into
-        // remote code execution. Fail closed.
+        // Widget sourcing (see AddressIQWebFlowScreen.buildFlowHtml for the exact
+        // HTML): CDN-first, SRI-pinned, bundled fallback.
         //
-        // `input.widgetUrl` remains an explicit developer override for serving a
-        // local bundle during development.
+        //   1. `input.widgetUrl` — explicit developer override, wins over everything.
+        //   2. The CDN — `{cdnUrl}/v{widgetVersion}/iqcollect.js`, loaded with
+        //      `integrity="{widgetIntegrity}"`. The hash is baked from
+        //      `.widget-integrity`, written by addressiq-web's fanout PR from the
+        //      same build as the vendored asset, and the CDN's /v{x.y.z}/ paths are
+        //      immutable — so the pin is meaningful. Chromium (this WebView) enforces
+        //      SRI, so a tampered bundle refuses to execute and trips onerror rather
+        //      than running attacker JS next to the session config.
+        //   3. The bundled asset (src/main/assets/iqcollect.js), injected by the
+        //      onerror fallback — covers CDN outage, offline devices, and SRI failure.
+        //      It is also the ONLY source when the CDN preconditions are not met
+        //      (DEVELOPMENT, or version/integrity/cdn not baked).
+        //
+        // With no bundled asset AND no usable remote source, fail closed.
         val widgetUrl = input.widgetUrl
         val bundledPresent = runCatching { assets.open("iqcollect.js").close() }.isSuccess
-        if (!bundledPresent && widgetUrl == null) {
+        val cdnAvailable = cdnWidgetUrl(input.environment) != null
+        if (!bundledPresent && widgetUrl == null && !cdnAvailable) {
             finishWith(
                 AddressIQVerifyResult.Failed(
                     "WIDGET_BUNDLE_MISSING",
                     "The bundled widget (assets/iqcollect.js) is missing from the AddressIQ " +
-                        "SDK and no widgetUrl override was supplied. This is a packaging bug; " +
-                        "the SDK will not load the widget from a remote host.",
+                        "SDK, no pinned CDN build is available for this environment, and no " +
+                        "widgetUrl override was supplied. This is a packaging bug.",
                 ),
             )
             return
