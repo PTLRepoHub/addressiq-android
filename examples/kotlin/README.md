@@ -46,8 +46,8 @@ credentials file needed.
 
 On the login screen you set:
 - **API key** and **App user ID** — your test credentials.
-- **Environment** — Sandbox or Production (the hosted APIs).
-- **Local API URL** *(optional)* — point at a local backend instead (see below).
+- **Environment** — Sandbox or Production (the hosted APIs), or Development to
+  target a local backend (see below).
 - **Business name** — a fallback only; the widget normally gets the business
   name/logo/colour from the backend.
 
@@ -69,7 +69,9 @@ sample `server.js` you can run as your server. It talks to the real AddressIQ AP
    MOCK_UPSTREAM=1 node server.js
    ```
    It listens on `http://localhost:3355`.
-2. In the app's login screen, set **Local API URL** to **`http://10.0.2.2:3355`**.
+2. In the app's login screen, choose the **Development** environment. The SDK
+   resolves its API base URL to **`http://10.0.2.2:3355`** automatically — there
+   is no user-facing URL field.
 
 > On the Android emulator, `10.0.2.2` is a special alias for your computer's
 > `localhost` — the emulator can't use `localhost` directly (that points at the
@@ -92,7 +94,7 @@ sample `server.js` you can run as your server. It talks to the real AddressIQ AP
 - **Collect widget shows a black screen** — the widget loads its branding/config
   from the backend on open. On an emulator that can't reach the hosted API
   (`net::ERR … -201` TLS failures in `adb logcat`), it won't paint. Fixes:
-  run against a reachable backend via **Local API URL** (see above), use a device
+  run against a reachable backend via the **Development** environment (see above), use a device
   with working network, or point at production with a valid key.
 - **`gradle: command not found`** — install Gradle (`brew install gradle`) just to
   generate the wrapper once, or open the module in Android Studio which bundles
@@ -100,4 +102,4 @@ sample `server.js` you can run as your server. It talks to the real AddressIQ AP
 - **Map step falls back to manual entry** — no Google Maps key was delivered. The
   key is provisioned by the platform/backend via the widget config endpoint
   (`/widget/config`); make sure the app can reach a backend that returns it (see
-  **Local API URL** above).
+  the **Development** environment above).

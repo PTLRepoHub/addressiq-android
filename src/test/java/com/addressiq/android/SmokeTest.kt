@@ -21,6 +21,22 @@ class SmokeTest {
     }
 
     @Test
+    fun environmentsResolveDistinctIngestUrls() {
+        val sandbox = AddressIQEnvironment.SANDBOX.defaultIngestUrl()
+        val production = AddressIQEnvironment.PRODUCTION.defaultIngestUrl()
+
+        assertTrue(sandbox.startsWith("https://"))
+        assertTrue(production.startsWith("https://"))
+        assertEquals("sandbox and production ingest must differ", false, sandbox == production)
+        // Ingest is a dedicated host, distinct from the general API host.
+        assertEquals(
+            "production ingest and api hosts must differ",
+            false,
+            production == AddressIQEnvironment.PRODUCTION.defaultApiUrl(),
+        )
+    }
+
+    @Test
     fun lifecycleStartsUninitialized() {
         assertEquals(
             AddressIQLifecycleState.UNINITIALIZED,

@@ -71,8 +71,6 @@ data class AddressIQVerifyInput(
     val businessName: String? = null,
     /** Override the hosted widget bundle URL (for local development). */
     val widgetUrl: String? = null,
-    /** Override the resolved API base URL (for local development / mock upstream). */
-    val apiUrlOverride: String? = null,
 ) : Parcelable
 
 /** Sealed result type returned to the partner via [AddressIQVerifyContract]. */

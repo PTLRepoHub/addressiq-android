@@ -21,12 +21,28 @@ import java.util.concurrent.TimeUnit
 
 enum class AddressIQEnvironment {
     SANDBOX,
-    PRODUCTION;
+    PRODUCTION,
+    DEVELOPMENT;
 
-    /** Public API base URL the SDK resolves to when no override is set. */
+    /** Public API base URL the SDK resolves to from the environment. */
     public fun defaultApiUrl(): String = when (this) {
-        PRODUCTION -> "https://api.addressiqpro.com"
+        // Baked into the AAR at build time from the `addressiqApiUrl` Gradle
+        // property (GitHub `ADDRESSIQ_API_URL` var); defaults to the public URL.
+        PRODUCTION -> BuildConfig.ADDRESSIQ_API_URL
         SANDBOX -> "https://api-staging.addressiqpro.com"
+        // Android emulator reaches the host machine's localhost via 10.0.2.2.
+        DEVELOPMENT -> "http://10.0.2.2:3355"
+    }
+
+    /** Dedicated transit-event ingest host the SDK resolves to. */
+    public fun defaultIngestUrl(): String = when (this) {
+        // Baked into the AAR at build time from the `addressiqIngestUrl` Gradle
+        // property (GitHub `ADDRESSIQ_INGEST_URL` var); defaults to the public
+        // ingest URL.
+        PRODUCTION -> BuildConfig.ADDRESSIQ_INGEST_URL
+        SANDBOX -> "https://ingest-api-staging.addressiqpro.com"
+        // Android emulator reaches the host machine's localhost via 10.0.2.2.
+        DEVELOPMENT -> "http://10.0.2.2:3355"
     }
 }
 
@@ -34,16 +50,12 @@ enum class AddressIQEnvironment {
 data class AddressIQConfig(
     val apiKey: String,
     val environment: AddressIQEnvironment = AddressIQEnvironment.PRODUCTION,
-    /**
-     * Optional override for the API base URL. Production integrations
-     * should leave this null — the SDK resolves the right URL from
-     * [environment]. Override only when routing through a partner
-     * proxy or running against a hermetic test backend.
-     */
-    val apiUrl: String? = null,
 ) {
-    /** Effective API URL: explicit override if set, otherwise the env default. */
-    val resolvedApiUrl: String get() = apiUrl ?: environment.defaultApiUrl()
+    /** Effective API URL, resolved from [environment]. */
+    val resolvedApiUrl: String get() = environment.defaultApiUrl()
+
+    /** Effective transit-event ingest URL, resolved from [environment]. */
+    val resolvedIngestUrl: String get() = environment.defaultIngestUrl()
 }
 
 @Serializable

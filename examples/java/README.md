@@ -71,7 +71,7 @@ marshalled back to the UI thread before logging. Example (the login path):
 
 ```java
 AddressIQJava.initialize(AddressIQJava.config()
-    .apiKey(apiKey).environment(environment).apiUrl(localApiUrl).build());
+    .apiKey(apiKey).environment(environment).build());
 
 AddressIQJava.setUser(AddressIQJava.user().appUserId(appUserId).firstName("Sample").build())
     .whenComplete((unused, err) -> runOnUiThread(() -> {
