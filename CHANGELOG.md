@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.2.0...v0.3.0) (2026-07-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* removed AddressIQVerifyInput.googleMapsApiKey. The key is provisioned automatically by the platform; there is nothing to pass.
+
+### Features
+
+* provision Google Maps key automatically; remove googleMapsApiKey ([#6](https://github.com/PTLRepoHub/addressiq-android/issues/6)) ([9ca2318](https://github.com/PTLRepoHub/addressiq-android/commit/9ca2318360553603363fa2fe3e3a1917e69490c4))
+
 ## [0.2.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.1.0...v0.2.0) (2026-07-10)
 
 
