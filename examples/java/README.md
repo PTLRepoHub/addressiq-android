@@ -53,9 +53,12 @@ One scrollable screen grouped into sections, with a **Log** pane at the bottom
 (newest first) showing each call's result. It drives both integration tracks:
 
 - **Login** — editable API key (seed `aiq_test_demo_bank_seed01`), app user ID,
-  business name, optional local API URL, and a Sandbox/Production toggle.
+  business name, and an environment toggle that cycles
+  **Staging → Production → Development** (`MainActivity.java:183-194`). There is
+  no user-facing URL field: the hosts resolve from the environment, and
+  `DEVELOPMENT` targets a local backend at `http://10.0.2.2:4000`.
   **Continue** runs `AddressIQJava.initialize(...)` then `setUser(...)` → the log
-  shows `initialized (SANDBOX)` and `user set; lifecycle: IDLE`.
+  shows `initialized (STAGING)` and `user set; lifecycle: IDLE`.
 - **Collect** (Track A) — **Collect Address** launches the Collect UI via
   `AddressIQVerifyContract` (`registerForActivityResult`); on `Completed` it
   remembers the `locationCode` and starts a digital verification.
@@ -92,7 +95,7 @@ Collect contract, verification, permissions, and lifecycle).
 ## Troubleshooting
 
 - **`setUser error: …`** — `setUser` calls the backend. On an emulator that can't
-  reach the hosted sandbox API (or with an invalid key), it fails here. Use a
+  reach the hosted staging API (or with an invalid key), it fails here. Use a
   device/emulator with working network, or point at a reachable backend.
 - **`gradle: command not found`** — install Gradle (`brew install gradle`) just to
   generate the wrapper once, or open the module in Android Studio which bundles its

@@ -51,7 +51,7 @@ public class MainActivity extends ComponentActivity {
     private EditText apiKeyField;
     private EditText appUserIdField;
     private EditText businessNameField;
-    private AddressIQEnvironment environment = AddressIQEnvironment.SANDBOX;
+    private AddressIQEnvironment environment = AddressIQEnvironment.STAGING;
     private Button envButton;
 
     // Collected locationCodes; the last one drives the verify actions.
@@ -180,17 +180,17 @@ public class MainActivity extends ComponentActivity {
     // ── Actions (mirror the Kotlin SampleViewModel) ─────────────────────
 
     private void toggleEnvironment() {
-        // Cycle SANDBOX → PRODUCTION → DEVELOPMENT (local backend at
-        // http://10.0.2.2:3355, the emulator's view of the host's localhost).
+        // Cycle STAGING → PRODUCTION → DEVELOPMENT (local backend at
+        // http://10.0.2.2:4000, the emulator's view of the host's localhost).
         switch (environment) {
-            case SANDBOX:
+            case STAGING:
                 environment = AddressIQEnvironment.PRODUCTION;
                 break;
             case PRODUCTION:
                 environment = AddressIQEnvironment.DEVELOPMENT;
                 break;
             default:
-                environment = AddressIQEnvironment.SANDBOX;
+                environment = AddressIQEnvironment.STAGING;
                 break;
         }
         envButton.setText("Environment: " + environment);

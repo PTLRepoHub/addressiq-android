@@ -41,12 +41,12 @@ adb shell monkey -p com.addressiq.example -c android.intent.category.LAUNCHER 1
 
 `installDebug` compiles the SDK too (composite build), so your SDK edits show up
 after a rebuild. The app's `apiKey` defaults to the seed key
-`aiq_test_demo_bank_seed01` in the `SANDBOX` environment — editable on-screen, no
+`aiq_test_demo_bank_seed01` in the `STAGING` environment — editable on-screen, no
 credentials file needed.
 
 On the login screen you set:
 - **API key** and **App user ID** — your test credentials.
-- **Environment** — Sandbox or Production (the hosted APIs), or Development to
+- **Environment** — Staging or Production (the hosted APIs), or Development to
   target a local backend (see below).
 - **Business name** — a fallback only; the widget normally gets the business
   name/logo/colour from the backend.
@@ -68,9 +68,9 @@ sample `server.js` you can run as your server. It talks to the real AddressIQ AP
    #   …or for offline fake data:
    MOCK_UPSTREAM=1 node server.js
    ```
-   It listens on `http://localhost:3355`.
+   It listens on `http://localhost:4000`.
 2. In the app's login screen, choose the **Development** environment. The SDK
-   resolves its API base URL to **`http://10.0.2.2:3355`** automatically — there
+   resolves its API base URL to **`http://10.0.2.2:4000`** automatically — there
    is no user-facing URL field.
 
 > On the Android emulator, `10.0.2.2` is a special alias for your computer's

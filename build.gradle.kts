@@ -39,26 +39,14 @@ android {
         targetSdk = 36
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Production API base URL, baked into the compiled AAR bytecode at
-        // build time. CI injects the real value via `-PaddressiqApiUrl=...`
-        // (from the GitHub `ADDRESSIQ_API_URL` variable); local/default builds
-        // fall back to the public URL. Consumed by
-        // AddressIQEnvironment.PRODUCTION.defaultApiUrl().
-        buildConfigField(
-            "String",
-            "ADDRESSIQ_API_URL",
-            "\"${project.findProperty("addressiqApiUrl") ?: "https://api.addressiqpro.com"}\"",
-        )
-        // Dedicated transit-event ingest host, baked into the compiled AAR at
-        // build time. CI injects the real value via `-PaddressiqIngestUrl=...`
-        // (from the GitHub `ADDRESSIQ_INGEST_URL` variable); local/default
-        // builds fall back to the public URL. Consumed by
-        // AddressIQEnvironment.PRODUCTION.defaultIngestUrl().
-        buildConfigField(
-            "String",
-            "ADDRESSIQ_INGEST_URL",
-            "\"${project.findProperty("addressiqIngestUrl") ?: "https://ingest-api.addressiqpro.com"}\"",
-        )
+        // NOTE: the per-environment API / ingest / CDN URLs are no longer
+        // injected here as `buildConfigField`s. They now live in the generated
+        // source com/addressiq/android/generated/AddressIQBuildConfig.kt, which
+        // `scripts/bake-build-config.sh --strict` rewrites wholesale at publish
+        // time from the STAGING_* / PROD_* GitHub repository variables (see
+        // .github/workflows/release.yml). The checked-in file carries the safe
+        // public defaults, so local builds and the test suite need no
+        // substitution. Consumed by AddressIQEnvironment.default{Api,Ingest,Cdn}Url().
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -80,9 +68,6 @@ android {
         // Powers the `AddressIQVerify` activity (ui/ package) — full
         // themed collect + verify flow on top of the AddressIQ singleton.
         compose = true
-        // Emits the generated BuildConfig class so the production API URL can
-        // be baked into the compiled AAR (see ADDRESSIQ_API_URL below).
-        buildConfig = true
     }
 }
 
