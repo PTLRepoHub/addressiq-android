@@ -207,9 +207,14 @@ private fun Color.toHexRgb(): String {
  *
  * Unavailable means: `DEVELOPMENT` (the CDN URL there is the dev host, which
  * serves no versioned widget), or any of the CDN base URL / `widgetVersion` /
- * `widgetIntegrity` not being baked in. The last case is the norm until
- * addressiq-web's fanout writes `.widget-version` + `.widget-integrity` — the
- * SDK is bundled-only until then, by construction rather than by accident.
+ * `widgetIntegrity` not being baked in.
+ *
+ * The pins are baked at release time from `.widget-version` + `.widget-integrity`,
+ * which addressiq-web's fanout writes from the same build the CDN serves — so a
+ * published SDK loads the widget from the CDN with an SRI `integrity` check, and
+ * falls back to the bundled asset only on error. An *unpinned* build (empty pins)
+ * is bundled-only by construction rather than by accident: it is what a local
+ * build produces, and what shipped before the fanout first ran.
  */
 internal fun cdnWidgetUrl(environment: AddressIQEnvironment): String? = cdnWidgetUrl(
     isDevelopment = environment == AddressIQEnvironment.DEVELOPMENT,

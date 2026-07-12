@@ -226,10 +226,41 @@ GitHub repository variables; the checked-in generated source
 (`src/main/kotlin/com/addressiq/android/generated/AddressIQBuildConfig.kt`)
 carries the public defaults for local builds. `DEVELOPMENT` is never baked.
 
-`AddressIQConfig.resolvedCdnUrl` exposes the per-environment CDN host, but
-nothing in the SDK fetches from it: the verify widget ships bundled
-(`src/main/assets/iqcollect.js`) and fails closed rather than falling back to a
-remote script.
+`AddressIQConfig.resolvedCdnUrl` exposes the per-environment CDN host, and the
+verify WebView **does** load the widget from it — under a Subresource-Integrity
+pin. `AddressIQWebFlowScreen.kt:288-321` resolves the widget source in order:
+
+1. **`widgetUrl`** — explicit developer override, wins over everything.
+2. **Pinned CDN build** — `{cdn}/v{widgetVersion}/iqcollect.js`
+   (`cdnWidgetUrl`, `AddressIQWebFlowScreen.kt:222-232`) loaded with
+   `integrity="{widgetIntegrity}" crossorigin="anonymous"`
+   (`AddressIQWebFlowScreen.kt:313-315`). Chromium **enforces** `integrity`, so
+   the CDN can only execute the exact bytes hashed at build time. The
+   version/hash pair is baked into `AddressIQBuildConfig` from the repo-root
+   `.widget-version` / `.widget-integrity` files, which addressiq-web's release
+   fanout writes from the same build the CDN serves; the CDN publishes immutable
+   `/v{x.y.z}/` paths (no floating alias) because a mutable URL cannot be pinned.
+3. **Bundled asset** (`src/main/assets/iqcollect.js`) — the *fallback*, injected
+   by `onerror="__iqWidgetFallback()"`, covering a CDN outage, an offline device
+   **and** an SRI mismatch. It is also the sole source when the CDN path is off:
+   `DEVELOPMENT` never uses the CDN, and an unbaked version or integrity
+   disables it (`AddressIQWebFlowScreen.kt:228-229`).
+
+With neither a pinned CDN build nor the bundled asset the SDK still **fails
+closed** (`AddressIQWebFlowScreen.kt:318-321`); an unpinned remote script is
+never loaded.
+
+Three details in that markup are load-bearing — each fails *silently* toward
+"looks fine, but never actually uses the CDN":
+
+- `crossorigin="anonymous"` is **mandatory**: without it the cross-origin
+  response is opaque, `integrity` cannot be evaluated, and every load hard-fails
+  into the fallback.
+- **Script order**: a blocking classic `<script>` fires `onerror` before the
+  parser reaches the next inline script, so `__iqWidgetFallback()` is defined
+  *before* the remote tag (which carries no `defer`/`async`).
+- The inlined fallback bundle is **escaped** — it contains `</script>`-alike
+  sequences that would otherwise terminate the tag.
 
 ## Errors
 
