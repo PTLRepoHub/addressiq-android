@@ -67,7 +67,11 @@ public class AddressIQGeofenceController(private val context: Context) {
     public companion object {
         public val REQUIRED_PERMISSIONS: Array<String> = arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            // Literal rather than Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            // (a field added in API 29) — the constant is compile-time-inlined
+            // to this exact string anyway, and the literal avoids a NewApi lint
+            // error on minSdk 24. Harmlessly ignored by the OS below API 29.
+            "android.permission.ACCESS_BACKGROUND_LOCATION",
         )
     }
 

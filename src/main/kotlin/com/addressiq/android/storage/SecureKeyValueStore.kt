@@ -7,7 +7,7 @@ import com.google.crypto.tink.Aead
 import com.google.crypto.tink.KeyTemplates
 import com.google.crypto.tink.aead.AeadConfig
 import com.google.crypto.tink.integration.android.AndroidKeysetManager
-import java.util.Base64
+import android.util.Base64
 
 /**
  * Storage abstraction the rest of the SDK depends on. Partners can swap the
@@ -47,13 +47,13 @@ internal class TinkSecureKeyValueStore(
 
     override fun put(key: String, value: String) {
         val ciphertext = aead.encrypt(value.toByteArray(Charsets.UTF_8), key.toByteArray(Charsets.UTF_8))
-        prefs.edit { putString(key, Base64.getEncoder().encodeToString(ciphertext)) }
+        prefs.edit { putString(key, Base64.encodeToString(ciphertext, Base64.NO_WRAP)) }
     }
 
     override fun get(key: String): String? {
         val encoded = prefs.getString(key, null) ?: return null
         return runCatching {
-            val ciphertext = Base64.getDecoder().decode(encoded)
+            val ciphertext = Base64.decode(encoded, Base64.NO_WRAP)
             val plaintext = aead.decrypt(ciphertext, key.toByteArray(Charsets.UTF_8))
             String(plaintext, Charsets.UTF_8)
         }.getOrNull()

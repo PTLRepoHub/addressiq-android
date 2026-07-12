@@ -8,7 +8,7 @@ on:
 
 jobs:
   sdk:
-    name: SDK · unit tests
+    name: SDK · unit tests + lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +19,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10"
-      - run: gradle test --no-daemon
+      # lintDebug gates NewApi regressions (e.g. java.time / Base64 on minSdk 24).
+      - run: gradle test lintDebug --no-daemon
 
   example:
     name: "Example · ${{ matrix.lang }} · assembleDebug (local SDK)"
