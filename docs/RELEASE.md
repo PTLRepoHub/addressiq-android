@@ -110,6 +110,25 @@ machine (`http://10.0.2.2:4000`, the emulator's alias for your `localhost`), so
 it stays a compile-time literal (`AddressIQ.kt:54`, `AddressIQ.kt:66`,
 `AddressIQ.kt:79`). Never ship a build configured for `DEVELOPMENT`.
 
+### The two widget pins (files, not repository variables)
+
+`AddressIQBuildConfig` also carries `widgetVersion` and `widgetIntegrity`
+(`AddressIQBuildConfig.kt:45`, `:48`). They are **not** repository variables: the
+baker reads them from two files at the repo root — `.widget-version` and
+`.widget-integrity` (`scripts/bake-build-config.sh:86-88`) — which
+addressiq-web's `widget-fanout.yml` commits on every web release, from **the
+same build** `cdn.yml` uploads, so the pinned hash cannot drift from the bytes
+on the CDN.
+
+They pin what the verify WebView loads: `{cdn}/v{widgetVersion}/iqcollect.js`
+with `integrity="{widgetIntegrity}"` (`AddressIQWebFlowScreen.kt:313-315`).
+Chromium enforces the pin, and the vendored `src/main/assets/iqcollect.js` is
+inlined as the `onerror` fallback — a CDN outage or an integrity failure
+degrades to the shipped bundle. If either file is empty/absent both constants
+bake to `""`, the CDN path is disabled and the SDK is bundled-only. They are
+deliberately outside `--strict`: a release must not fail because no widget has
+been fanned out yet. Never hand-write a hash.
+
 > **Behaviour change — a misconfigured release now FAILS instead of guessing.**
 > The old release step passed each URL as a Gradle property and *silently* fell
 > back to the checked-in default when the variable was unset — so a misconfigured
