@@ -51,12 +51,9 @@ On the login screen you set:
 - **Business name** — a fallback only; the widget normally gets the business
   name/logo/colour from the backend.
 
-The map needs a Google Maps key. This example reads it from the
-`GOOGLE_MAPS_API_KEY` environment variable at build time:
-
-```bash
-GOOGLE_MAPS_API_KEY=your-key ../gradlew installDebug
-```
+The map's Google Maps key is provisioned by the platform/backend and delivered to
+the widget via the widget config endpoint (`GET /api/v1/widget/config`), so you
+don't need to obtain or supply a Maps key yourself.
 
 ## Run against the local backend
 
@@ -100,5 +97,7 @@ sample `server.js` you can run as your server. It talks to the real AddressIQ AP
 - **`gradle: command not found`** — install Gradle (`brew install gradle`) just to
   generate the wrapper once, or open the module in Android Studio which bundles
   its own Gradle.
-- **Map step falls back to manual entry** — no Google Maps key. Pass one at build
-  time: `GOOGLE_MAPS_API_KEY=your-key ./gradlew installDebug`.
+- **Map step falls back to manual entry** — no Google Maps key was delivered. The
+  key is provisioned by the platform/backend via the widget config endpoint
+  (`/widget/config`); make sure the app can reach a backend that returns it (see
+  **Local API URL** above).
