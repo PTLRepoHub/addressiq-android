@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.5.0...v0.6.0) (2026-07-12)
+
+
+### Features
+
+* **widget:** re-vendor iqcollect.js from web v0.4.2 ([#15](https://github.com/PTLRepoHub/addressiq-android/issues/15)) ([426f31f](https://github.com/PTLRepoHub/addressiq-android/commit/426f31f3b14c41409cc54ea356b38159f8be47ff))
+
 ## [0.5.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.4.0...v0.5.0) (2026-07-12)
 
 
