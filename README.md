@@ -38,12 +38,12 @@ requires a token even when public.) Requires JDK 17 + the Android SDK (API 36),
 ```kotlin
 import com.addressiq.android.AddressIQ
 import com.addressiq.android.AddressIQConfig
-import com.addressiq.android.AddressIQEnvironment
+import com.addressiq.android.AddressIQDeployment
 import com.addressiq.android.SdkUser
 
 // 1. Initialise once at app start.
 AddressIQ.initialize(
-    AddressIQConfig(apiKey = "aiq_live_…", environment = AddressIQEnvironment.PRODUCTION),
+    AddressIQConfig(apiKey = "aiq_live_…", deployment = AddressIQDeployment.PRODUCTION),
 )
 
 // 2. Bind the end user.
@@ -86,7 +86,7 @@ class MyActivity : ComponentActivity() {
         AddressIQVerifyInput(
             apiKey = "aiq_live_…",
             appUserId = customer.id,
-            environment = AddressIQEnvironment.PRODUCTION,
+            deployment = AddressIQDeployment.PRODUCTION,
         ),
     )
 }
@@ -133,7 +133,7 @@ method is mirrored, with `suspend` functions surfaced as
 
 ```java
 AddressIQJava.initialize(
-    new AddressIQConfig("aiq_live_…", AddressIQEnvironment.PRODUCTION, null));
+    new AddressIQConfig("aiq_live_…", AddressIQDeployment.PRODUCTION, null));
 
 AddressIQJava.setUser(new SdkUser("cust_01J9P7XK", null, null, null, null))
     .thenCompose(ignored ->
@@ -189,7 +189,7 @@ gradle wrapper            # one-time — generates ./gradlew (skip in Android St
 Start an emulator first for `installDebug` (`emulator -avd <name>` or via
 Android Studio's Device Manager). The example's `apiKey` is hardcoded to the
 seed key `aiq_test_demo_bank_seed01` (editable on-screen) and defaults to the
-`STAGING` environment — no credentials file needed.
+`STAGING` deployment — no credentials file needed.
 
 The Kotlin example exercises the imperative API (digital + physical start),
 the lifecycle controls, and a **Launch Collect UI** button that drives
@@ -199,26 +199,39 @@ returned `verificationCode` / `locationCode` / `status`. Each example's
 substitution, so the app builds against this repo's SDK source (no publish
 step).
 
-## Environment
+## Deployment vs sandbox — two different things
 
-`AddressIQEnvironment` selects the backend — integrators just choose one; the
+These are orthogonal, and conflating them is the most common integration mistake:
+
+| | What it selects | How you set it |
+|---|---|---|
+| **Deployment** | Which AddressIQ **hosts** you talk to | `AddressIQConfig.deployment` |
+| **Tenant mode** | Whether your data is **sandbox or production** | **Which API key you paste** |
+
+`AddressIQDeployment` selects the backend — integrators just choose one; the
 API, transit-event ingest, and CDN hosts are resolved entirely from it, so you
 never pass a URL:
 
 - `PRODUCTION` — the hosted AddressIQ platform.
-- `STAGING` — the staging platform. (`SANDBOX` is the deprecated former name
-  and resolves identically.)
+- `STAGING` — the staging platform.
 - `DEVELOPMENT` — a backend running on your host machine, reachable from the
   Android emulator; use this only for local development, never in a shipped app.
 
-> **Java callers: `case SANDBOX:` no longer compiles.** `SANDBOX` was renamed to
-> `STAGING`. A deprecated `@JvmField val SANDBOX = STAGING` keeps it resolving
-> (`AddressIQ.kt:82-93`), but a Kotlin enum can't carry a deprecated alias
-> *entry* — so `SANDBOX` is a companion property, **not an enum constant**, and
-> Java `switch` requires enum constants as case labels. Rewrite
-> `switch (env) { case SANDBOX: … }` to use `STAGING`. Merely *referencing*
-> `AddressIQEnvironment.SANDBOX` as a value still works, and Kotlin callers
-> (including `when (env)`) are unaffected.
+**`SANDBOX` is gone.** It existed as a companion `@JvmField val SANDBOX = STAGING`,
+which asserted that sandbox was a deployment — it is not. Sandbox-vs-production is
+a property of your **API key**: `aiq_test_…` resolves to a sandbox tenant
+server-side, `aiq_live_…` to a production one. The SDK never sends a mode and
+cannot override the key's. `AddressIQDeployment.valueOf("SANDBOX")` now throws.
+
+The two combine freely: an `aiq_test_…` key on `PRODUCTION` is still sandbox data;
+an `aiq_live_…` key on `STAGING` is still production-mode data.
+
+> **Migrating from `environment`?** `environment = AddressIQEnvironment.SANDBOX` →
+> drop it and use a sandbox key (`aiq_test_…`), which is almost certainly what you
+> meant. Use `deployment = AddressIQDeployment.STAGING` only if you specifically
+> wanted the pre-production *hosts*. Java callers who wrote
+> `switch (env) { case SANDBOX: … }` already had to migrate (a companion property
+> was never a valid case label); now the reference itself no longer resolves.
 
 The `PRODUCTION` and `STAGING` URLs are baked into the published AAR at release
 time by `scripts/bake-build-config.sh --strict`, from the `STAGING_*` / `PROD_*`

@@ -55,7 +55,7 @@ class WidgetSourcingTest {
     /** The checked-in build config has no widget files baked yet → bundled-only. */
     @Test
     fun cdnUrl_isDormantUntilFanoutWritesTheFiles() {
-        assertNull(cdnWidgetUrl(AddressIQEnvironment.PRODUCTION))
+        assertNull(cdnWidgetUrl(AddressIQDeployment.PRODUCTION))
     }
 
     // ── HTML shape ──

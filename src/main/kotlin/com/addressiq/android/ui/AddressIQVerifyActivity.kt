@@ -37,7 +37,7 @@ class AddressIQVerifyActivity : ComponentActivity() {
 
         val theme = mergeTheme(input.theme)
 
-        val apiUrl = input.environment.defaultApiUrl()
+        val apiUrl = input.deployment.defaultApiUrl()
 
         // Widget sourcing (see AddressIQWebFlowScreen.buildFlowHtml for the exact
         // HTML): CDN-first, SRI-pinned, bundled fallback.
@@ -58,13 +58,13 @@ class AddressIQVerifyActivity : ComponentActivity() {
         // With no bundled asset AND no usable remote source, fail closed.
         val widgetUrl = input.widgetUrl
         val bundledPresent = runCatching { assets.open("iqcollect.js").close() }.isSuccess
-        val cdnAvailable = cdnWidgetUrl(input.environment) != null
+        val cdnAvailable = cdnWidgetUrl(input.deployment) != null
         if (!bundledPresent && widgetUrl == null && !cdnAvailable) {
             finishWith(
                 AddressIQVerifyResult.Failed(
                     "WIDGET_BUNDLE_MISSING",
                     "The bundled widget (assets/iqcollect.js) is missing from the AddressIQ " +
-                        "SDK, no pinned CDN build is available for this environment, and no " +
+                        "SDK, no pinned CDN build is available for this deployment, and no " +
                         "widgetUrl override was supplied. This is a packaging bug.",
                 ),
             )
