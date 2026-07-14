@@ -83,9 +83,6 @@ enum class AddressIQDeployment {
      * [AddressIQConfig.resolvedCdnUrl].
      */
     public fun defaultCdnUrl(): String {
-        // Development-only override (see `devOverride`) — lets a build reach a backend
-        // on another machine; the default is an emulator-only literal.
-        devOverride("ADDRESSIQ_DEV_CDN_URL", BuildConfig.ADDRESSIQ_DEV_CDN_URL)?.let { return it }
         return when (this) {
         PRODUCTION -> AddressIQBuildConfig.prodCdnUrl
         STAGING -> AddressIQBuildConfig.stagingCdnUrl
