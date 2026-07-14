@@ -252,6 +252,17 @@ private fun flowHtml(
         // Drives the platform-specific "Location permission" Settings screen.
         .put("platform", "android")
 
+    // Development-only Maps key (ADDRESSIQ_DEV_GOOGLE_MAPS_KEY). Normally the widget
+    // provisions its own — it fetches one from GET /api/v1/widget/config and falls
+    // back to the key baked into the vendored bundle — so this is absent in every
+    // shipped build. It covers the case that breaks: a local backend with no Maps key
+    // configured. `devGoogleMapsKey` throws outside DEVELOPMENT.
+    //
+    // NOTE: inert until addressiq-web's `googleMapsApiKey` field ships and that build
+    // is re-vendored here by the fanout; the widget currently reads only the remote
+    // value or its own baked literal.
+    input.deployment.devGoogleMapsKey?.let { cfg.put("googleMapsApiKey", it) }
+
     // Business identity is fetched by the widget from the backend (tenant behind
     // the API key). A client-supplied name and theme colours override that. The
     // widget maps `business.primaryColor` / `secondaryColor` onto its CSS vars

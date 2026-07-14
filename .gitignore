@@ -6,3 +6,12 @@ local.properties
 .idea/
 example/build/
 example/.gradle/
+
+# ── Local development environment ────────────────────────────────────────────
+# Real values (LAN IPs, a local Google Maps key, session tokens) live in .env and
+# are NEVER committed. .env.example is the documented template and IS tracked.
+# These are development-only overrides: the SDK refuses to honour them on a
+# staging or production build.
+.env
+.env.*
+!.env.example
