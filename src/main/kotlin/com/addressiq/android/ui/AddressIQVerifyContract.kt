@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Parcelable
 import androidx.activity.result.contract.ActivityResultContract
-import com.addressiq.android.AddressIQEnvironment
+import com.addressiq.android.AddressIQDeployment
 import com.addressiq.android.theme.AddressIQThemeOverrides
 import kotlinx.parcelize.Parcelize
 
@@ -28,7 +28,7 @@ import kotlinx.parcelize.Parcelize
  *         AddressIQVerifyInput(
  *           apiKey = "aiq_live_...",
  *           appUserId = customer.id,
- *           environment = AddressIQEnvironment.PRODUCTION,
+ *           deployment = AddressIQDeployment.PRODUCTION,
  *         ),
  *       )
  *     }
@@ -59,7 +59,7 @@ class AddressIQVerifyContract : ActivityResultContract<AddressIQVerifyInput, Add
 data class AddressIQVerifyInput(
     val apiKey: String,
     val appUserId: String,
-    val environment: AddressIQEnvironment = AddressIQEnvironment.PRODUCTION,
+    val deployment: AddressIQDeployment = AddressIQDeployment.PRODUCTION,
     val phone: String? = null,
     val firstName: String? = null,
     val lastName: String? = null,

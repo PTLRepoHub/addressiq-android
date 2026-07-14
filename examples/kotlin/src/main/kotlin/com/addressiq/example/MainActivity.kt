@@ -50,7 +50,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.addressiq.android.AddressIQ
 import com.addressiq.android.AddressIQConfig
-import com.addressiq.android.AddressIQEnvironment
+import com.addressiq.android.AddressIQDeployment
 import com.addressiq.android.SdkUser
 import com.addressiq.android.VerificationLifecycleState
 import com.addressiq.android.ui.AddressIQVerifyContract
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                             AddressIQVerifyInput(
                                 apiKey = API_KEY,
                                 appUserId = vm.appUserId,
-                                environment = vm.environment,
+                                deployment = vm.deployment,
                                 // Fallback name; the widget fetches the real
                                 // business identity from the backend.
                                 businessName = vm.businessName.ifBlank { null },
@@ -113,7 +113,7 @@ class SampleViewModel : ViewModel() {
     // Login inputs.
     var apiKey by mutableStateOf(API_KEY)
     var appUserId by mutableStateOf("cust_sample_001")
-    var environment by mutableStateOf(AddressIQEnvironment.STAGING)
+    var deployment by mutableStateOf(AddressIQDeployment.STAGING)
 
     // Demo options.
     /** Fallback business name; the widget normally gets it from the backend. */
@@ -173,7 +173,7 @@ class SampleViewModel : ViewModel() {
 
     fun login() = viewModelScope.launch {
         runCatching {
-            AddressIQ.initialize(AddressIQConfig(apiKey = apiKey, environment = environment))
+            AddressIQ.initialize(AddressIQConfig(apiKey = apiKey, deployment = deployment))
             AddressIQ.setUser(SdkUser(appUserId = appUserId, firstName = "Sample"))
         }.onSuccess {
             loggedIn = true
@@ -319,13 +319,13 @@ private fun LoginScreen(vm: SampleViewModel) {
             Text("Sign in", fontSize = 22.sp)
             OutlinedTextField(value = vm.apiKey, onValueChange = { vm.apiKey = it }, label = { Text("API key") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = vm.appUserId, onValueChange = { vm.appUserId = it }, label = { Text("App user ID") }, modifier = Modifier.fillMaxWidth())
-            Text("Environment: ${vm.environment.name}")
+            Text("Environment: ${vm.deployment.name}")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.STAGING }) { Text("Staging") }
-                FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.PRODUCTION }) { Text("Production") }
+                FilledTonalButton(onClick = { vm.deployment = AddressIQDeployment.STAGING }) { Text("Staging") }
+                FilledTonalButton(onClick = { vm.deployment = AddressIQDeployment.PRODUCTION }) { Text("Production") }
                 // DEVELOPMENT resolves the API base URL to http://10.0.2.2:4000,
                 // the host machine's localhost as seen from the Android emulator.
-                FilledTonalButton(onClick = { vm.environment = AddressIQEnvironment.DEVELOPMENT }) { Text("Development") }
+                FilledTonalButton(onClick = { vm.deployment = AddressIQDeployment.DEVELOPMENT }) { Text("Development") }
             }
             OutlinedTextField(value = vm.businessName, onValueChange = { vm.businessName = it }, label = { Text("Business name (fallback)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
@@ -410,7 +410,7 @@ private fun DeveloperScreen(vm: SampleViewModel) {
 @Composable
 private fun SettingsScreen(vm: SampleViewModel) {
     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Environment"); Text(vm.environment.name) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Environment"); Text(vm.deployment.name) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("App user"); Text(vm.appUserId) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Lifecycle"); Text(vm.lifecycle) }
         Spacer(Modifier.height(8.dp))

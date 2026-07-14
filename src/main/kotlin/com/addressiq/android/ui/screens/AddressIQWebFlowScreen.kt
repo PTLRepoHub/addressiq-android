@@ -12,7 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.roundToInt
 import com.addressiq.android.AddressIQ
-import com.addressiq.android.AddressIQEnvironment
+import com.addressiq.android.AddressIQDeployment
 import com.addressiq.android.generated.AddressIQBuildConfig
 import com.addressiq.android.ui.AddressIQVerifyInput
 import com.google.android.gms.location.LocationServices
@@ -202,7 +202,7 @@ private fun Color.toHexRgb(): String {
 }
 
 /**
- * The pinned CDN URL of the widget for [environment], or `null` when the CDN
+ * The pinned CDN URL of the widget for [deployment], or `null` when the CDN
  * path is unavailable and the bundled asset must be used.
  *
  * Unavailable means: `DEVELOPMENT` (the CDN URL there is the dev host, which
@@ -216,9 +216,9 @@ private fun Color.toHexRgb(): String {
  * is bundled-only by construction rather than by accident: it is what a local
  * build produces, and what shipped before the fanout first ran.
  */
-internal fun cdnWidgetUrl(environment: AddressIQEnvironment): String? = cdnWidgetUrl(
-    isDevelopment = environment == AddressIQEnvironment.DEVELOPMENT,
-    cdnBaseUrl = environment.defaultCdnUrl(),
+internal fun cdnWidgetUrl(deployment: AddressIQDeployment): String? = cdnWidgetUrl(
+    isDevelopment = deployment == AddressIQDeployment.DEVELOPMENT,
+    cdnBaseUrl = deployment.defaultCdnUrl(),
     widgetVersion = AddressIQBuildConfig.widgetVersion,
     widgetIntegrity = AddressIQBuildConfig.widgetIntegrity,
 )
@@ -269,7 +269,7 @@ private fun flowHtml(
         cfgJson = cfg.toString(),
         widgetUrl = widgetUrl,
         bundledJs = bundledJs,
-        cdnScriptUrl = cdnWidgetUrl(input.environment),
+        cdnScriptUrl = cdnWidgetUrl(input.deployment),
         widgetIntegrity = AddressIQBuildConfig.widgetIntegrity,
     )
 }

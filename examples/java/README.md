@@ -53,9 +53,9 @@ One scrollable screen grouped into sections, with a **Log** pane at the bottom
 (newest first) showing each call's result. It drives both integration tracks:
 
 - **Login** — editable API key (seed `aiq_test_demo_bank_seed01`), app user ID,
-  business name, and an environment toggle that cycles
+  business name, and an deployment toggle that cycles
   **Staging → Production → Development** (`MainActivity.java:183-194`). There is
-  no user-facing URL field: the hosts resolve from the environment, and
+  no user-facing URL field: the hosts resolve from the deployment, and
   `DEVELOPMENT` targets a local backend at `http://10.0.2.2:4000`.
   **Continue** runs `AddressIQJava.initialize(...)` then `setUser(...)` → the log
   shows `initialized (STAGING)` and `user set; lifecycle: IDLE`.
@@ -74,7 +74,7 @@ marshalled back to the UI thread before logging. Example (the login path):
 
 ```java
 AddressIQJava.initialize(AddressIQJava.config()
-    .apiKey(apiKey).environment(environment).build());
+    .apiKey(apiKey).deployment(deployment).build());
 
 AddressIQJava.setUser(AddressIQJava.user().appUserId(appUserId).firstName("Sample").build())
     .whenComplete((unused, err) -> runOnUiThread(() -> {

@@ -24,7 +24,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-enum class AddressIQEnvironment {
+enum class AddressIQDeployment {
     /**
      * Pre-production. Named `STAGING` across all AddressIQ SDKs and matching
      * the `STAGING_*` build variables.
@@ -41,17 +41,22 @@ enum class AddressIQEnvironment {
     DEVELOPMENT;
 
     /**
-     * Public API base URL the SDK resolves to from the environment.
+     * Public API base URL the SDK resolves to from the deployment.
      *
      * `PRODUCTION` and `STAGING` are baked in at publish time from the
      * `PROD_ADDRESSIQ_API_BASE_URL` / `STAGING_ADDRESSIQ_API_BASE_URL` GitHub variables (see
      * scripts/bake-build-config.sh).
      */
-    public fun defaultApiUrl(): String = when (this) {
+    public fun defaultApiUrl(): String {
+        // Development-only override (see `devOverride`) — lets a build reach a backend
+        // on another machine; the default is an emulator-only literal.
+        devOverride("ADDRESSIQ_DEV_API_URL", BuildConfig.ADDRESSIQ_DEV_API_URL)?.let { return it }
+        return when (this) {
         PRODUCTION -> AddressIQBuildConfig.prodApiUrl
         STAGING -> AddressIQBuildConfig.stagingApiUrl
         // Android emulator reaches the host machine's localhost via 10.0.2.2.
         DEVELOPMENT -> "http://10.0.2.2:4000"
+        }
     }
 
     /**
@@ -59,53 +64,83 @@ enum class AddressIQEnvironment {
      * batches post here rather than to [defaultApiUrl]. Baked from
      * `PROD_ADDRESSIQ_INGEST_BASE_URL` / `STAGING_ADDRESSIQ_INGEST_BASE_URL`.
      */
-    public fun defaultIngestUrl(): String = when (this) {
+    public fun defaultIngestUrl(): String {
+        // Development-only override (see `devOverride`) — lets a build reach a backend
+        // on another machine; the default is an emulator-only literal.
+        devOverride("ADDRESSIQ_DEV_INGEST_URL", BuildConfig.ADDRESSIQ_DEV_INGEST_URL)?.let { return it }
+        return when (this) {
         PRODUCTION -> AddressIQBuildConfig.prodIngestUrl
         STAGING -> AddressIQBuildConfig.stagingIngestUrl
         // Android emulator reaches the host machine's localhost via 10.0.2.2.
         DEVELOPMENT -> "http://10.0.2.2:4000"
+        }
     }
 
     /**
-     * CDN base URL for this environment. Baked from `PROD_ADDRESSIQ_CDN_BASE_URL` /
+     * CDN base URL for this deployment. Baked from `PROD_ADDRESSIQ_CDN_BASE_URL` /
      * `STAGING_ADDRESSIQ_CDN_BASE_URL`. The verify WebView loads the widget from
      * `{this}/v{widgetVersion}/iqcollect.js` with an SRI hash pinned — see
      * [AddressIQConfig.resolvedCdnUrl].
      */
-    public fun defaultCdnUrl(): String = when (this) {
+    public fun defaultCdnUrl(): String {
+        return when (this) {
         PRODUCTION -> AddressIQBuildConfig.prodCdnUrl
         STAGING -> AddressIQBuildConfig.stagingCdnUrl
         // Android emulator reaches the host machine's localhost via 10.0.2.2.
         DEVELOPMENT -> "http://10.0.2.2:4000"
+        }
     }
 
-    companion object {
-        /**
-         * Former name for [STAGING]. Retained so existing integrators keep
-         * compiling; resolves identically.
-         */
-        @Deprecated(
-            "Renamed to STAGING",
-            ReplaceWith("AddressIQEnvironment.STAGING", "com.addressiq.android.AddressIQEnvironment"),
-        )
-        @JvmField
-        val SANDBOX: AddressIQEnvironment = STAGING
+    // NOTE: no SANDBOX alias. It used to exist here as a companion `val SANDBOX =
+    // STAGING`, which asserted that sandbox was a deployment. It is not — sandbox
+    // vs production is a property of the API key, resolved server-side. Removed.
+
+    /**
+     * A development-only override, or null when unset.
+     *
+     * Sourced at build time from a gitignored `local.properties` (or the
+     * environment) — see `.env.example` and `buildConfigField` in build.gradle.kts.
+     * They exist because the [DEVELOPMENT] hosts are otherwise hardcoded to
+     * `10.0.2.2:4000`, an EMULATOR alias for the host machine that a physical
+     * device cannot reach.
+     *
+     * Honoured ONLY in [DEVELOPMENT]. Supplied on any other deployment it throws:
+     * a build-time value must never be able to point a shipped app at an arbitrary
+     * host, and a security-relevant setting that silently does nothing is worse
+     * than a loud failure. A published AAR bakes these as `""`, so the throw
+     * cannot fire for an integrator who has not set them.
+     *
+     * [value] is a parameter only so tests can drive both sides of the switch.
+     */
+    internal fun devOverride(name: String, value: String): String? {
+        if (value.isEmpty()) return null
+        require(this == DEVELOPMENT) {
+            "AddressIQ: $name is a development-only override, but deployment is $this. " +
+                "Outside development the SDK resolves its hosts from the values baked at " +
+                "release — it will not let a build-time value point a shipped app at an " +
+                "arbitrary host. Unset $name, or use AddressIQDeployment.DEVELOPMENT."
+        }
+        return value
     }
+
+    /** Development-only widget bundle URL, or null. */
+    public val devWidgetUrl: String?
+        get() = devOverride("ADDRESSIQ_DEV_WIDGET_URL", BuildConfig.ADDRESSIQ_DEV_WIDGET_URL)
 }
 
 @Serializable
 data class AddressIQConfig(
     val apiKey: String,
-    val environment: AddressIQEnvironment = AddressIQEnvironment.PRODUCTION,
+    val deployment: AddressIQDeployment = AddressIQDeployment.PRODUCTION,
 ) {
-    /** Effective API URL, resolved from [environment]. */
-    val resolvedApiUrl: String get() = environment.defaultApiUrl()
+    /** Effective API URL, resolved from [deployment]. */
+    val resolvedApiUrl: String get() = deployment.defaultApiUrl()
 
-    /** Effective transit-event ingest URL, resolved from [environment]. */
-    val resolvedIngestUrl: String get() = environment.defaultIngestUrl()
+    /** Effective transit-event ingest URL, resolved from [deployment]. */
+    val resolvedIngestUrl: String get() = deployment.defaultIngestUrl()
 
     /**
-     * Effective CDN base URL for this environment.
+     * Effective CDN base URL for this deployment.
      *
      * The verify WebView is CDN-first: it loads
      * `{resolvedCdnUrl}/v{AddressIQBuildConfig.widgetVersion}/iqcollect.js` with
@@ -116,7 +151,7 @@ data class AddressIQConfig(
      * injected if the remote script fails — CDN outage, offline device, or an SRI
      * mismatch. If neither source is available the flow fails closed.
      */
-    val resolvedCdnUrl: String get() = environment.defaultCdnUrl()
+    val resolvedCdnUrl: String get() = deployment.defaultCdnUrl()
 }
 
 @Serializable
@@ -202,7 +237,7 @@ object AddressIQ {
 
     fun initialize(config: AddressIQConfig) {
         require(config.apiKey.isNotEmpty()) { "apiKey is required" }
-        require(config.resolvedApiUrl.isNotEmpty()) { "apiUrl resolved to empty string (check environment)" }
+        require(config.resolvedApiUrl.isNotEmpty()) { "apiUrl resolved to empty string (check deployment)" }
         this.config = config
         state = AddressIQLifecycleState.IDLE
         emitStateChange()
