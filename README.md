@@ -322,3 +322,90 @@ and repository variables, and the versioning rules.
 
 Fork, branch, PR. CI runs the SDK unit tests and assembles both examples against
 the local SDK on every push/PR.
+
+## Running the SDK locally, end to end
+
+Everything below is **development-only**. Every override is honoured solely under
+the `development` deployment and **throws** on a staging or production build, even
+if the variable is set — a build-time value must never be able to point a shipped
+app at an arbitrary host.
+
+### 1. Start the backend
+
+```sh
+cd addressiq-node-backend
+cp .env.example .env          # set GOOGLE_MAPS_API_KEY if you want the map to load
+npm install && npm start      # http://localhost:4000
+```
+
+It must bind `0.0.0.0`, not `127.0.0.1`, or nothing off-machine can reach it.
+
+### 2. (Optional) Serve the widget yourself
+
+Only needed if you are **changing the widget**. Otherwise the SDK uses the widget
+it already ships.
+
+```sh
+cd addressiq-web
+npx rollup -c                 # → dist/iqcollect.js
+npx serve dist -p 5173
+```
+
+Then set `ADDRESSIQ_DEV_WIDGET_URL` to `http://<host>:5173/iqcollect.js` for live
+reload without re-vendoring. Point it at a **published** URL
+(`https://cdn.addressiqpro.com/v0.5.3/iqcollect.js`) instead to exercise the
+remote-load + SRI + `onerror`-fallback paths, which `development` otherwise never
+takes because it inlines the bundled asset.
+
+A `file://` path will **not** work: the Android emulator is a separate VM and
+cannot see your filesystem, and a physical device certainly cannot. It has to be
+served over HTTP.
+
+### 3. Point the SDK at your machine
+
+```sh
+cp .env.example .env
+```
+
+**Which host do I use?**
+
+| Running on | Host |
+|---|---|
+| Android emulator | `10.0.2.2` — a special alias for your machine's localhost |
+| iOS simulator | `localhost` — it shares your Mac's network |
+| **Physical device (either OS)** | your **LAN IP** — `ipconfig getifaddr en0` |
+
+The default is the emulator/simulator literal, which is exactly why these
+overrides exist: **a physical device cannot reach `10.0.2.2` or `localhost`.**
+
+Then supply the values — either append them to the gitignored `local.properties`, or export them:
+
+```sh
+set -a; source .env; set +a
+./gradlew installDebug        # or run from Android Studio
+```
+
+### 4. Android only: allow plain HTTP
+
+A LAN IP over plain `http://` is blocked by default. In your **debug** manifest:
+
+```xml
+<application android:usesCleartextTraffic="true" …>
+```
+
+Debug only — never in a release. (A `network_security_config` scoped to that one
+host is the tighter version.)
+
+### Troubleshooting
+
+- **Requests hang / connection refused on a real device** — the backend is bound to
+  `127.0.0.1`. Bind `0.0.0.0`.
+- **Works on the emulator, fails on a device** — you are still on `10.0.2.2`. Set a
+  LAN IP.
+- **Android: `net::ERR_CLEARTEXT_NOT_PERMITTED`** — step 4.
+- **The map is blank** — your backend has no Maps key. `GET /api/v1/widget/config`
+  supplies it; set `GOOGLE_MAPS_API_KEY` in the backend's `.env`. (The key is
+  platform-provisioned; no native SDK accepts one, because the key is used by the
+  widget, not by native code.)
+- **An override "does nothing"** — check `deployment` is `development`. Anywhere
+  else it throws rather than being silently ignored, so you would have seen an error.
