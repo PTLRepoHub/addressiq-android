@@ -126,18 +126,6 @@ enum class AddressIQDeployment {
         return value
     }
 
-    /**
-     * Development-only Google Maps key, or null.
-     *
-     * The key is normally **platform-provisioned**: the widget fetches one from
-     * `GET /api/v1/widget/config` and falls back to the key baked into the vendored
-     * bundle. This covers the case that breaks — a local backend with no Maps key
-     * configured — so it takes precedence over both. Deliberately NOT a field on
-     * [AddressIQConfig]: integrators do not pass a Maps key.
-     */
-    public val devGoogleMapsKey: String?
-        get() = devOverride("ADDRESSIQ_DEV_GOOGLE_MAPS_KEY", BuildConfig.ADDRESSIQ_DEV_GOOGLE_MAPS_KEY)
-
     /** Development-only widget bundle URL, or null. */
     public val devWidgetUrl: String?
         get() = devOverride("ADDRESSIQ_DEV_WIDGET_URL", BuildConfig.ADDRESSIQ_DEV_WIDGET_URL)
