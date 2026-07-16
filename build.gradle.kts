@@ -67,6 +67,7 @@ android {
         listOf(
             "ADDRESSIQ_DEV_API_URL",
             "ADDRESSIQ_DEV_INGEST_URL",
+            "ADDRESSIQ_DEV_CDN_URL",
             "ADDRESSIQ_DEV_WIDGET_URL",
         ).forEach { name ->
             buildConfigField("String", name, "\"${devValue(name)}\"")

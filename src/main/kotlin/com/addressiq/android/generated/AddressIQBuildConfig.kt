@@ -42,8 +42,8 @@ internal object AddressIQBuildConfig {
     const val prodCdnUrl = "https://cdn.addressiqpro.com"
 
     /** Vendored widget version, no leading "v" (from `.widget-version`). "" = unknown. */
-    const val widgetVersion = ""
+    const val widgetVersion = "0.5.3"
 
     /** SRI hash of the vendored widget (from `.widget-integrity`). "" = unknown. */
-    const val widgetIntegrity = ""
+    const val widgetIntegrity = "sha384-wUErWmll1WWgesjXvSN93KLxHTDLNXdZ4FMR9nT2tQ7tpdBdEuQCDMkHgdssRvkb"
 }

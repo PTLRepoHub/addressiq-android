@@ -13,11 +13,17 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Live-engine integration test for the web-widget bridge, mirroring the iOS
- * WKWebView test. Loads the REAL bundled widget (`assets/iqcollect.js`) into an
- * on-device [WebView], drives the flow to the address step, and asserts the full
- * round-trip: the widget's BridgeLocationProvider posts a `getLocation` request
- * to the native `@JavascriptInterface` (JS → native), and a native
+ * WKWebView test. Loads the widget into an on-device [WebView], drives the flow to
+ * the address step, and asserts the full round-trip: the widget's
+ * BridgeLocationProvider posts a `getLocation` request to the native
+ * `@JavascriptInterface` (JS → native), and a native
  * `window.AddressIQBridge.resolve(...)` reply is accepted (native → JS).
+ *
+ * The SDK no longer SHIPS a widget bundle (it loads the SRI-pinned copy from the
+ * CDN at runtime), so this reads a TEST FIXTURE from the androidTest assets rather
+ * than the app's assets. The test exercises the native bridge against real widget
+ * JS; that requirement is unchanged by where production sources the widget, and a
+ * fixture keeps it off the network.
  */
 @RunWith(AndroidJUnit4::class)
 class WebFlowBridgeInstrumentedTest {
@@ -25,14 +31,15 @@ class WebFlowBridgeInstrumentedTest {
     @Test
     fun bundledWidgetDrivesGetLocationBridgeRoundTrip() {
         val instr = InstrumentationRegistry.getInstrumentation()
-        val ctx = instr.targetContext
-        val widgetJs = ctx.assets.open("iqcollect.js").bufferedReader().use { it.readText() }
-        assertTrue("bundle should define IQCollect", widgetJs.contains("IQCollect"))
+        // instr.context = the test APK (androidTest/assets); instr.targetContext =
+        // the app under test, which no longer ships iqcollect.js.
+        val widgetJs = instr.context.assets.open("iqcollect.js").bufferedReader().use { it.readText() }
+        assertTrue("fixture should define IQCollect", widgetJs.contains("IQCollect"))
 
         val gotGetLocation = CountDownLatch(1)
 
         instr.runOnMainSync {
-            val webView = WebView(ctx)
+            val webView = WebView(instr.targetContext)
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
             webView.addJavascriptInterface(object {

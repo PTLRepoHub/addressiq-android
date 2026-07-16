@@ -239,41 +239,43 @@ GitHub repository variables; the checked-in generated source
 (`src/main/kotlin/com/addressiq/android/generated/AddressIQBuildConfig.kt`)
 carries the public defaults for local builds. `DEVELOPMENT` is never baked.
 
-`AddressIQConfig.resolvedCdnUrl` exposes the per-environment CDN host, and the
-verify WebView **does** load the widget from it — under a Subresource-Integrity
-pin. `AddressIQWebFlowScreen.kt:288-321` resolves the widget source in order:
+`AddressIQConfig.resolvedCdnUrl` exposes the per-deployment CDN host, and the
+verify WebView loads the widget from it under a Subresource-Integrity pin. **This
+is the only source — the SDK no longer ships a bundled widget.**
+`AddressIQWebFlowScreen.kt` resolves it in order:
 
-1. **`widgetUrl`** — explicit developer override, wins over everything.
-2. **Pinned CDN build** — `{cdn}/v{widgetVersion}/iqcollect.js`
-   (`cdnWidgetUrl`, `AddressIQWebFlowScreen.kt:222-232`) loaded with
-   `integrity="{widgetIntegrity}" crossorigin="anonymous"`
-   (`AddressIQWebFlowScreen.kt:313-315`). Chromium **enforces** `integrity`, so
-   the CDN can only execute the exact bytes hashed at build time. The
-   version/hash pair is baked into `AddressIQBuildConfig` from the repo-root
+1. **`widgetUrl`** — development-only override, wins over the CDN. Unpinned,
+   because a widget you are actively rebuilding cannot satisfy a fixed hash.
+2. **Pinned CDN build** — `{cdn}/v{widgetVersion}/iqcollect.js` loaded with
+   `integrity="{widgetIntegrity}" crossorigin="anonymous"`. Chromium **enforces**
+   `integrity`, so the CDN can only execute the exact bytes hashed at build time.
+   The version/hash pair is baked into `AddressIQBuildConfig` from the repo-root
    `.widget-version` / `.widget-integrity` files, which addressiq-web's release
    fanout writes from the same build the CDN serves; the CDN publishes immutable
    `/v{x.y.z}/` paths (no floating alias) because a mutable URL cannot be pinned.
-3. **Bundled asset** (`src/main/assets/iqcollect.js`) — the *fallback*, injected
-   by `onerror="__iqWidgetFallback()"`, covering a CDN outage, an offline device
-   **and** an SRI mismatch. It is also the sole source when the CDN path is off:
-   `DEVELOPMENT` never uses the CDN, and an unbaked version or integrity
-   disables it (`AddressIQWebFlowScreen.kt:228-229`).
+   The checked-in default is the currently published pin, so it works out of the
+   box. `DEVELOPMENT` is **not** excluded any more: it loads the same pinned bundle
+   (its CDN defaults to production, overridable with `ADDRESSIQ_DEV_CDN_URL`).
 
-With neither a pinned CDN build nor the bundled asset the SDK still **fails
-closed** (`AddressIQWebFlowScreen.kt:318-321`); an unpinned remote script is
-never loaded.
+> **There is no fallback, and verification now depends on the CDN.** A CDN outage,
+> an offline device, or an SRI mismatch is a **hard failure**: `onerror` posts
+> `WIDGET_LOAD_FAILED` through the `AddressIQAndroid` bridge → `onFailed`, rather
+> than leaving a blank WebView. The SDK previously vendored
+> `src/main/assets/iqcollect.js` and degraded to it; that copy is gone. **The
+> collect UI cannot render without a network.**
 
-Three details in that markup are load-bearing — each fails *silently* toward
-"looks fine, but never actually uses the CDN":
+With no pinned CDN build (empty version/integrity) and no override the SDK still
+**fails closed** — an unpinned remote script is never loaded.
 
-- `crossorigin="anonymous"` is **mandatory**: without it the cross-origin
-  response is opaque, `integrity` cannot be evaluated, and every load hard-fails
-  into the fallback.
+Two details in that markup are load-bearing:
+
+- `crossorigin="anonymous"` is **mandatory**: without it the cross-origin response
+  is opaque, `integrity` cannot be evaluated, and every load hard-fails.
 - **Script order**: a blocking classic `<script>` fires `onerror` before the
-  parser reaches the next inline script, so `__iqWidgetFallback()` is defined
-  *before* the remote tag (which carries no `defer`/`async`).
-- The inlined fallback bundle is **escaped** — it contains `</script>`-alike
-  sequences that would otherwise terminate the tag.
+  parser reaches the next inline script, so `__iqWidgetLoadFailed()` is defined
+  *before* the remote tag (which carries no `defer`/`async`). The boot script is
+  guarded on `window.AddressIQ` so a failed load surfaces the reported error
+  instead of an opaque `undefined` throw.
 
 ## Errors
 
@@ -354,8 +356,8 @@ npx serve dist -p 5173
 Then set `ADDRESSIQ_DEV_WIDGET_URL` to `http://<host>:5173/iqcollect.js` for live
 reload without re-vendoring. Point it at a **published** URL
 (`https://cdn.addressiqpro.com/v0.5.3/iqcollect.js`) instead to exercise the
-remote-load + SRI + `onerror`-fallback paths, which `development` otherwise never
-takes because it inlines the bundled asset.
+pinned CDN bundle — though `DEVELOPMENT` now loads that by default, so this is only
+for pointing at a widget you are serving yourself.
 
 A `file://` path will **not** work: the Android emulator is a separate VM and
 cannot see your filesystem, and a physical device certainly cannot. It has to be

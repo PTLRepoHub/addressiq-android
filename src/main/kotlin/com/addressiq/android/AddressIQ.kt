@@ -83,11 +83,16 @@ enum class AddressIQDeployment {
      * [AddressIQConfig.resolvedCdnUrl].
      */
     public fun defaultCdnUrl(): String {
+        // Development-only override (ADDRESSIQ_DEV_CDN_URL) — load the widget from a
+        // CDN you serve yourself.
+        devOverride("ADDRESSIQ_DEV_CDN_URL", BuildConfig.ADDRESSIQ_DEV_CDN_URL)?.let { return it }
         return when (this) {
         PRODUCTION -> AddressIQBuildConfig.prodCdnUrl
         STAGING -> AddressIQBuildConfig.stagingCdnUrl
-        // Android emulator reaches the host machine's localhost via 10.0.2.2.
-        DEVELOPMENT -> "http://10.0.2.2:4000"
+        // NOT the dev host: the local backend serves no /v{x.y.z}/iqcollect.js, and
+        // the SDK ships no bundled copy, so a dev build loads the real pinned widget
+        // from the production CDN. Override with ADDRESSIQ_DEV_CDN_URL.
+        DEVELOPMENT -> AddressIQBuildConfig.prodCdnUrl
         }
     }
 
@@ -142,14 +147,14 @@ data class AddressIQConfig(
     /**
      * Effective CDN base URL for this deployment.
      *
-     * The verify WebView is CDN-first: it loads
+     * The verify WebView loads
      * `{resolvedCdnUrl}/v{AddressIQBuildConfig.widgetVersion}/iqcollect.js` with
-     * `integrity="{AddressIQBuildConfig.widgetIntegrity}"` — the CDN publishes
-     * immutable `/v{x.y.z}/` paths precisely so a hash can be pinned to one, and
-     * the WebView (Chromium) refuses to execute a bundle whose bytes do not match.
-     * The vendored `src/main/assets/iqcollect.js` stays embedded as the fallback,
-     * injected if the remote script fails — CDN outage, offline device, or an SRI
-     * mismatch. If neither source is available the flow fails closed.
+     * `integrity="{AddressIQBuildConfig.widgetIntegrity}"`, and ONLY from there —
+     * the SDK ships no bundled copy. The CDN publishes immutable `/v{x.y.z}/` paths
+     * so a hash can be pinned to one, and Chromium refuses to execute bytes that do
+     * not match. A failed load (outage, offline, SRI mismatch) surfaces
+     * WIDGET_LOAD_FAILED rather than falling back. If no pin is baked the flow
+     * fails closed.
      */
     val resolvedCdnUrl: String get() = deployment.defaultCdnUrl()
 }
