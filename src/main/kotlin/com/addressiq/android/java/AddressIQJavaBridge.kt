@@ -7,7 +7,7 @@ import android.app.Activity
 import android.content.Context
 import com.addressiq.android.AddressIQ
 import com.addressiq.android.AddressIQConfig
-import com.addressiq.android.AddressIQEnvironment
+import com.addressiq.android.AddressIQDeployment
 import com.addressiq.android.SdkUser
 import com.addressiq.android.VerificationLifecycleState
 import kotlinx.coroutines.CoroutineScope
@@ -32,7 +32,7 @@ import java.util.concurrent.CompletableFuture
  *
  * ```java
  * AddressIQJava.initialize(
- *   new AddressIQConfig("aiq_live_...", AddressIQEnvironment.PRODUCTION)
+ *   new AddressIQConfig("aiq_live_...", AddressIQDeployment.PRODUCTION)
  * );
  *
  * AddressIQJava.setUser(new SdkUser("cust_01J9P7XK", null, null, null, null))
@@ -254,7 +254,7 @@ public object AddressIQJava {
      * ```java
      * AddressIQConfig config = AddressIQJava.config()
      *   .apiKey("aiq_live_...")
-     *   .environment(AddressIQEnvironment.PRODUCTION)
+     *   .deployment(AddressIQDeployment.PRODUCTION)
      *   .build();
      * ```
      */
@@ -276,14 +276,14 @@ public object AddressIQJava {
 
     public class ConfigBuilder internal constructor() {
         private var apiKey: String? = null
-        private var environment: AddressIQEnvironment = AddressIQEnvironment.PRODUCTION
+        private var deployment: AddressIQDeployment = AddressIQDeployment.PRODUCTION
 
         public fun apiKey(value: String): ConfigBuilder = apply { this.apiKey = value }
-        public fun environment(value: AddressIQEnvironment): ConfigBuilder = apply { this.environment = value }
+        public fun deployment(value: AddressIQDeployment): ConfigBuilder = apply { this.deployment = value }
 
         public fun build(): AddressIQConfig {
             val key = requireNotNull(apiKey) { "apiKey is required" }
-            return AddressIQConfig(apiKey = key, environment = environment)
+            return AddressIQConfig(apiKey = key, deployment = deployment)
         }
     }
 

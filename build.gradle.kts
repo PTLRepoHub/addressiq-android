@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.library") version "8.5.0"
     kotlin("android") version "2.0.0"
@@ -39,14 +41,37 @@ android {
         targetSdk = 36
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // NOTE: the per-environment API / ingest / CDN URLs are no longer
-        // injected here as `buildConfigField`s. They now live in the generated
-        // source com/addressiq/android/generated/AddressIQBuildConfig.kt, which
-        // `scripts/bake-build-config.sh --strict` rewrites wholesale at publish
-        // time from the STAGING_* / PROD_* GitHub repository variables (see
+        // NOTE: the per-deployment API / ingest / CDN URLs for STAGING and
+        // PRODUCTION are not injected here as `buildConfigField`s. They live in the
+        // generated source com/addressiq/android/generated/AddressIQBuildConfig.kt,
+        // which `scripts/bake-build-config.sh --strict` rewrites wholesale at
+        // publish time from the STAGING_* / PROD_* GitHub repository variables (see
         // .github/workflows/release.yml). The checked-in file carries the safe
         // public defaults, so local builds and the test suite need no
-        // substitution. Consumed by AddressIQEnvironment.default{Api,Ingest,Cdn}Url().
+        // substitution. Consumed by AddressIQDeployment.default{Api,Ingest,Cdn}Url().
+        //
+        // The DEV_* fields below are a different thing and do belong here: they are
+        // DEVELOPMENT-ONLY overrides, sourced from a gitignored local.properties (or
+        // the environment) on a developer's machine and empty everywhere else. They
+        // default to "" so a published AAR carries nothing, and AddressIQDeployment
+        // throws if a non-empty one is seen on a shipped deployment. They exist
+        // because the DEVELOPMENT hosts are otherwise hardcoded to 10.0.2.2:4000 —
+        // an EMULATOR alias for the host machine that a physical device cannot reach.
+        //
+        // Precedence: environment variable > local.properties > "".
+        val devProps = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        }
+        fun devValue(name: String): String =
+            System.getenv(name) ?: devProps.getProperty(name) ?: ""
+        listOf(
+            "ADDRESSIQ_DEV_API_URL",
+            "ADDRESSIQ_DEV_INGEST_URL",
+            "ADDRESSIQ_DEV_CDN_URL",
+            "ADDRESSIQ_DEV_WIDGET_URL",
+        ).forEach { name ->
+            buildConfigField("String", name, "\"${devValue(name)}\"")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -68,6 +93,10 @@ android {
         // Powers the `AddressIQVerify` activity (ui/ package) — full
         // themed collect + verify flow on top of the AddressIQ singleton.
         compose = true
+        // Only for the DEV_* overrides in defaultConfig. The AGP-generated class is
+        // `com.addressiq.android.BuildConfig`; the hand-rolled release constants live
+        // in `AddressIQBuildConfig` and are deliberately kept separate.
+        buildConfig = true
     }
 }
 

@@ -38,12 +38,12 @@ requires a token even when public.) Requires JDK 17 + the Android SDK (API 36),
 ```kotlin
 import com.addressiq.android.AddressIQ
 import com.addressiq.android.AddressIQConfig
-import com.addressiq.android.AddressIQEnvironment
+import com.addressiq.android.AddressIQDeployment
 import com.addressiq.android.SdkUser
 
 // 1. Initialise once at app start.
 AddressIQ.initialize(
-    AddressIQConfig(apiKey = "aiq_live_…", environment = AddressIQEnvironment.PRODUCTION),
+    AddressIQConfig(apiKey = "aiq_live_…", deployment = AddressIQDeployment.PRODUCTION),
 )
 
 // 2. Bind the end user.
@@ -86,7 +86,7 @@ class MyActivity : ComponentActivity() {
         AddressIQVerifyInput(
             apiKey = "aiq_live_…",
             appUserId = customer.id,
-            environment = AddressIQEnvironment.PRODUCTION,
+            deployment = AddressIQDeployment.PRODUCTION,
         ),
     )
 }
@@ -133,7 +133,7 @@ method is mirrored, with `suspend` functions surfaced as
 
 ```java
 AddressIQJava.initialize(
-    new AddressIQConfig("aiq_live_…", AddressIQEnvironment.PRODUCTION, null));
+    new AddressIQConfig("aiq_live_…", AddressIQDeployment.PRODUCTION, null));
 
 AddressIQJava.setUser(new SdkUser("cust_01J9P7XK", null, null, null, null))
     .thenCompose(ignored ->
@@ -189,7 +189,7 @@ gradle wrapper            # one-time — generates ./gradlew (skip in Android St
 Start an emulator first for `installDebug` (`emulator -avd <name>` or via
 Android Studio's Device Manager). The example's `apiKey` is hardcoded to the
 seed key `aiq_test_demo_bank_seed01` (editable on-screen) and defaults to the
-`STAGING` environment — no credentials file needed.
+`STAGING` deployment — no credentials file needed.
 
 The Kotlin example exercises the imperative API (digital + physical start),
 the lifecycle controls, and a **Launch Collect UI** button that drives
@@ -199,26 +199,39 @@ returned `verificationCode` / `locationCode` / `status`. Each example's
 substitution, so the app builds against this repo's SDK source (no publish
 step).
 
-## Environment
+## Deployment vs sandbox — two different things
 
-`AddressIQEnvironment` selects the backend — integrators just choose one; the
+These are orthogonal, and conflating them is the most common integration mistake:
+
+| | What it selects | How you set it |
+|---|---|---|
+| **Deployment** | Which AddressIQ **hosts** you talk to | `AddressIQConfig.deployment` |
+| **Tenant mode** | Whether your data is **sandbox or production** | **Which API key you paste** |
+
+`AddressIQDeployment` selects the backend — integrators just choose one; the
 API, transit-event ingest, and CDN hosts are resolved entirely from it, so you
 never pass a URL:
 
 - `PRODUCTION` — the hosted AddressIQ platform.
-- `STAGING` — the staging platform. (`SANDBOX` is the deprecated former name
-  and resolves identically.)
+- `STAGING` — the staging platform.
 - `DEVELOPMENT` — a backend running on your host machine, reachable from the
   Android emulator; use this only for local development, never in a shipped app.
 
-> **Java callers: `case SANDBOX:` no longer compiles.** `SANDBOX` was renamed to
-> `STAGING`. A deprecated `@JvmField val SANDBOX = STAGING` keeps it resolving
-> (`AddressIQ.kt:82-93`), but a Kotlin enum can't carry a deprecated alias
-> *entry* — so `SANDBOX` is a companion property, **not an enum constant**, and
-> Java `switch` requires enum constants as case labels. Rewrite
-> `switch (env) { case SANDBOX: … }` to use `STAGING`. Merely *referencing*
-> `AddressIQEnvironment.SANDBOX` as a value still works, and Kotlin callers
-> (including `when (env)`) are unaffected.
+**`SANDBOX` is gone.** It existed as a companion `@JvmField val SANDBOX = STAGING`,
+which asserted that sandbox was a deployment — it is not. Sandbox-vs-production is
+a property of your **API key**: `aiq_test_…` resolves to a sandbox tenant
+server-side, `aiq_live_…` to a production one. The SDK never sends a mode and
+cannot override the key's. `AddressIQDeployment.valueOf("SANDBOX")` now throws.
+
+The two combine freely: an `aiq_test_…` key on `PRODUCTION` is still sandbox data;
+an `aiq_live_…` key on `STAGING` is still production-mode data.
+
+> **Migrating from `environment`?** `environment = AddressIQEnvironment.SANDBOX` →
+> drop it and use a sandbox key (`aiq_test_…`), which is almost certainly what you
+> meant. Use `deployment = AddressIQDeployment.STAGING` only if you specifically
+> wanted the pre-production *hosts*. Java callers who wrote
+> `switch (env) { case SANDBOX: … }` already had to migrate (a companion property
+> was never a valid case label); now the reference itself no longer resolves.
 
 The `PRODUCTION` and `STAGING` URLs are baked into the published AAR at release
 time by `scripts/bake-build-config.sh --strict`, from the `STAGING_*` / `PROD_*`
@@ -226,41 +239,43 @@ GitHub repository variables; the checked-in generated source
 (`src/main/kotlin/com/addressiq/android/generated/AddressIQBuildConfig.kt`)
 carries the public defaults for local builds. `DEVELOPMENT` is never baked.
 
-`AddressIQConfig.resolvedCdnUrl` exposes the per-environment CDN host, and the
-verify WebView **does** load the widget from it — under a Subresource-Integrity
-pin. `AddressIQWebFlowScreen.kt:288-321` resolves the widget source in order:
+`AddressIQConfig.resolvedCdnUrl` exposes the per-deployment CDN host, and the
+verify WebView loads the widget from it under a Subresource-Integrity pin. **This
+is the only source — the SDK no longer ships a bundled widget.**
+`AddressIQWebFlowScreen.kt` resolves it in order:
 
-1. **`widgetUrl`** — explicit developer override, wins over everything.
-2. **Pinned CDN build** — `{cdn}/v{widgetVersion}/iqcollect.js`
-   (`cdnWidgetUrl`, `AddressIQWebFlowScreen.kt:222-232`) loaded with
-   `integrity="{widgetIntegrity}" crossorigin="anonymous"`
-   (`AddressIQWebFlowScreen.kt:313-315`). Chromium **enforces** `integrity`, so
-   the CDN can only execute the exact bytes hashed at build time. The
-   version/hash pair is baked into `AddressIQBuildConfig` from the repo-root
+1. **`widgetUrl`** — development-only override, wins over the CDN. Unpinned,
+   because a widget you are actively rebuilding cannot satisfy a fixed hash.
+2. **Pinned CDN build** — `{cdn}/v{widgetVersion}/iqcollect.js` loaded with
+   `integrity="{widgetIntegrity}" crossorigin="anonymous"`. Chromium **enforces**
+   `integrity`, so the CDN can only execute the exact bytes hashed at build time.
+   The version/hash pair is baked into `AddressIQBuildConfig` from the repo-root
    `.widget-version` / `.widget-integrity` files, which addressiq-web's release
    fanout writes from the same build the CDN serves; the CDN publishes immutable
    `/v{x.y.z}/` paths (no floating alias) because a mutable URL cannot be pinned.
-3. **Bundled asset** (`src/main/assets/iqcollect.js`) — the *fallback*, injected
-   by `onerror="__iqWidgetFallback()"`, covering a CDN outage, an offline device
-   **and** an SRI mismatch. It is also the sole source when the CDN path is off:
-   `DEVELOPMENT` never uses the CDN, and an unbaked version or integrity
-   disables it (`AddressIQWebFlowScreen.kt:228-229`).
+   The checked-in default is the currently published pin, so it works out of the
+   box. `DEVELOPMENT` is **not** excluded any more: it loads the same pinned bundle
+   (its CDN defaults to production, overridable with `ADDRESSIQ_DEV_CDN_URL`).
 
-With neither a pinned CDN build nor the bundled asset the SDK still **fails
-closed** (`AddressIQWebFlowScreen.kt:318-321`); an unpinned remote script is
-never loaded.
+> **There is no fallback, and verification now depends on the CDN.** A CDN outage,
+> an offline device, or an SRI mismatch is a **hard failure**: `onerror` posts
+> `WIDGET_LOAD_FAILED` through the `AddressIQAndroid` bridge → `onFailed`, rather
+> than leaving a blank WebView. The SDK previously vendored
+> `src/main/assets/iqcollect.js` and degraded to it; that copy is gone. **The
+> collect UI cannot render without a network.**
 
-Three details in that markup are load-bearing — each fails *silently* toward
-"looks fine, but never actually uses the CDN":
+With no pinned CDN build (empty version/integrity) and no override the SDK still
+**fails closed** — an unpinned remote script is never loaded.
 
-- `crossorigin="anonymous"` is **mandatory**: without it the cross-origin
-  response is opaque, `integrity` cannot be evaluated, and every load hard-fails
-  into the fallback.
+Two details in that markup are load-bearing:
+
+- `crossorigin="anonymous"` is **mandatory**: without it the cross-origin response
+  is opaque, `integrity` cannot be evaluated, and every load hard-fails.
 - **Script order**: a blocking classic `<script>` fires `onerror` before the
-  parser reaches the next inline script, so `__iqWidgetFallback()` is defined
-  *before* the remote tag (which carries no `defer`/`async`).
-- The inlined fallback bundle is **escaped** — it contains `</script>`-alike
-  sequences that would otherwise terminate the tag.
+  parser reaches the next inline script, so `__iqWidgetLoadFailed()` is defined
+  *before* the remote tag (which carries no `defer`/`async`). The boot script is
+  guarded on `window.AddressIQ` so a failed load surfaces the reported error
+  instead of an opaque `undefined` throw.
 
 ## Errors
 
@@ -309,3 +324,90 @@ and repository variables, and the versioning rules.
 
 Fork, branch, PR. CI runs the SDK unit tests and assembles both examples against
 the local SDK on every push/PR.
+
+## Running the SDK locally, end to end
+
+Everything below is **development-only**. Every override is honoured solely under
+the `development` deployment and **throws** on a staging or production build, even
+if the variable is set — a build-time value must never be able to point a shipped
+app at an arbitrary host.
+
+### 1. Start the backend
+
+```sh
+cd addressiq-node-backend
+cp .env.example .env          # set GOOGLE_MAPS_API_KEY if you want the map to load
+npm install && npm start      # http://localhost:4000
+```
+
+It must bind `0.0.0.0`, not `127.0.0.1`, or nothing off-machine can reach it.
+
+### 2. (Optional) Serve the widget yourself
+
+Only needed if you are **changing the widget**. Otherwise the SDK uses the widget
+it already ships.
+
+```sh
+cd addressiq-web
+npx rollup -c                 # → dist/iqcollect.js
+npx serve dist -p 5173
+```
+
+Then set `ADDRESSIQ_DEV_WIDGET_URL` to `http://<host>:5173/iqcollect.js` for live
+reload without re-vendoring. Point it at a **published** URL
+(`https://cdn.addressiqpro.com/v0.5.3/iqcollect.js`) instead to exercise the
+pinned CDN bundle — though `DEVELOPMENT` now loads that by default, so this is only
+for pointing at a widget you are serving yourself.
+
+A `file://` path will **not** work: the Android emulator is a separate VM and
+cannot see your filesystem, and a physical device certainly cannot. It has to be
+served over HTTP.
+
+### 3. Point the SDK at your machine
+
+```sh
+cp .env.example .env
+```
+
+**Which host do I use?**
+
+| Running on | Host |
+|---|---|
+| Android emulator | `10.0.2.2` — a special alias for your machine's localhost |
+| iOS simulator | `localhost` — it shares your Mac's network |
+| **Physical device (either OS)** | your **LAN IP** — `ipconfig getifaddr en0` |
+
+The default is the emulator/simulator literal, which is exactly why these
+overrides exist: **a physical device cannot reach `10.0.2.2` or `localhost`.**
+
+Then supply the values — either append them to the gitignored `local.properties`, or export them:
+
+```sh
+set -a; source .env; set +a
+./gradlew installDebug        # or run from Android Studio
+```
+
+### 4. Android only: allow plain HTTP
+
+A LAN IP over plain `http://` is blocked by default. In your **debug** manifest:
+
+```xml
+<application android:usesCleartextTraffic="true" …>
+```
+
+Debug only — never in a release. (A `network_security_config` scoped to that one
+host is the tighter version.)
+
+### Troubleshooting
+
+- **Requests hang / connection refused on a real device** — the backend is bound to
+  `127.0.0.1`. Bind `0.0.0.0`.
+- **Works on the emulator, fails on a device** — you are still on `10.0.2.2`. Set a
+  LAN IP.
+- **Android: `net::ERR_CLEARTEXT_NOT_PERMITTED`** — step 4.
+- **The map is blank** — your backend has no Maps key. `GET /api/v1/widget/config`
+  supplies it; set `GOOGLE_MAPS_API_KEY` in the backend's `.env`. (The key is
+  platform-provisioned; no native SDK accepts one, because the key is used by the
+  widget, not by native code.)
+- **An override "does nothing"** — check `deployment` is `development`. Anywhere
+  else it throws rather than being silently ignored, so you would have seen an error.

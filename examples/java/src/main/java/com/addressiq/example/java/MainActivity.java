@@ -11,7 +11,7 @@ import android.widget.TextView;
 import androidx.activity.ComponentActivity;
 import androidx.activity.result.ActivityResultLauncher;
 
-import com.addressiq.android.AddressIQEnvironment;
+import com.addressiq.android.AddressIQDeployment;
 import com.addressiq.android.VerificationLifecycleState;
 import com.addressiq.android.java.AddressIQJava;
 import com.addressiq.android.ui.AddressIQVerifyContract;
@@ -51,7 +51,7 @@ public class MainActivity extends ComponentActivity {
     private EditText apiKeyField;
     private EditText appUserIdField;
     private EditText businessNameField;
-    private AddressIQEnvironment environment = AddressIQEnvironment.STAGING;
+    private AddressIQDeployment deployment = AddressIQDeployment.STAGING;
     private Button envButton;
 
     // Collected locationCodes; the last one drives the verify actions.
@@ -80,7 +80,7 @@ public class MainActivity extends ComponentActivity {
         apiKeyField = field("API key", SEED_KEY);
         appUserIdField = field("App user ID", "cust_sample_001");
         businessNameField = field("Business name (fallback)", "Kuda Business");
-        envButton = button("Environment: " + environment, this::toggleEnvironment);
+        envButton = button("Deployment: " + deployment, this::toggleDeployment);
         button("Continue  (initialize + setUser)", this::login);
 
         section("Collect");
@@ -179,30 +179,30 @@ public class MainActivity extends ComponentActivity {
 
     // ── Actions (mirror the Kotlin SampleViewModel) ─────────────────────
 
-    private void toggleEnvironment() {
+    private void toggleDeployment() {
         // Cycle STAGING → PRODUCTION → DEVELOPMENT (local backend at
         // http://10.0.2.2:4000, the emulator's view of the host's localhost).
-        switch (environment) {
+        switch (deployment) {
             case STAGING:
-                environment = AddressIQEnvironment.PRODUCTION;
+                deployment = AddressIQDeployment.PRODUCTION;
                 break;
             case PRODUCTION:
-                environment = AddressIQEnvironment.DEVELOPMENT;
+                deployment = AddressIQDeployment.DEVELOPMENT;
                 break;
             default:
-                environment = AddressIQEnvironment.STAGING;
+                deployment = AddressIQDeployment.STAGING;
                 break;
         }
-        envButton.setText("Environment: " + environment);
+        envButton.setText("Deployment: " + deployment);
     }
 
     private void login() {
         try {
             AddressIQJava.initialize(AddressIQJava.config()
                     .apiKey(text(apiKeyField))
-                    .environment(environment)
+                    .deployment(deployment)
                     .build());
-            log("initialized (" + environment + ")");
+            log("initialized (" + deployment + ")");
         } catch (Exception e) {
             log("init error: " + e.getMessage());
             return;
@@ -219,7 +219,7 @@ public class MainActivity extends ComponentActivity {
         AddressIQVerifyInput input = new AddressIQVerifyInput(
                 text(apiKeyField),                 // apiKey
                 text(appUserIdField),              // appUserId
-                environment,                       // environment
+                deployment,                       // deployment
                 null, null, null, null,            // phone, firstName, lastName, email
                 null,                              // theme
                 null, null,                        // privacyPolicyUrl, termsUrl
