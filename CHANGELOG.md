@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.8.0...v0.9.0) (2026-09-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* `AddressIQEnvironment` is renamed to `AddressIQDeployment` and `SANDBOX` is removed. Integrators referencing the old type or constant must update.
+* The SDK no longer ships a vendored `iqcollect.js`. The widget is loaded from the CDN at runtime against a pinned version and SRI hash.
+
+### Features
+
+* **config:** rename `AddressIQEnvironment` to `AddressIQDeployment`; drop `SANDBOX`
+* **config:** dev-only env overrides for hosts and the Maps key
+* **widget:** drop the vendored bundle; the pinned CDN copy is the only source
+* **signals:** collect `appState.state`, so the engine's ALWAYS_FOREGROUND check can fire for the first time
+
+### Bug Fixes
+
+* **security:** detect modern emulators. The Build-property heuristic does not match a current AVD (`google/sdk_gphone16k_arm64/.../dev-keys`), so EMULATOR_DETECTED — a terminating fraud flag — never fired for the emulators actually in use. Detection now leads with `ro.hardware` and the qemu flags.
+* **storage:** initialise SQLCipher. `loadLibs()` was never called, so the telemetry queue threw `UnsatisfiedLinkError` on open and every event was silently dropped by the surrounding `runCatching`.
+* **config:** resolve development ingest to port 4001; it pointed at 4000, which is the API.
+* **telemetry:** log flush failures instead of swallowing them, so a permanently undeliverable queue is distinguishable from having nothing to send.
+
 ## [0.8.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.7.0...v0.8.0) (2026-07-12)
 
 
