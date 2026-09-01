@@ -52,7 +52,11 @@ internal object DeviceSignals {
      * Build the `rawPayload` sections for one event. `location` supplies the
      * per-fix mock flag; everything else describes the device.
      */
-    fun collect(context: Context, location: Location?): Map<String, Map<String, Any>> {
+    fun collect(
+        context: Context,
+        location: Location?,
+        rootMarkers: List<String> = ROOT_MARKERS,
+    ): Map<String, Map<String, Any>> {
         val spoofingApps = installedSpoofingApps(context)
         val signals = mutableMapOf(
             "device" to mapOf<String, Any>("isEmulator" to isEmulator()),
@@ -64,7 +68,7 @@ internal object DeviceSignals {
             // check could not fire.
             "appState" to mapOf<String, Any>("state" to appState(context)),
             "security" to mapOf<String, Any>(
-                "isRooted" to isRooted(),
+                "isRooted" to isRooted(rootMarkers),
                 "hasSpoofingApps" to spoofingApps.isNotEmpty(),
                 "spoofingAppsFound" to spoofingApps,
             ),
@@ -173,7 +177,21 @@ internal object DeviceSignals {
         }
     }
 
-    fun isRooted(): Boolean = ROOT_MARKERS.any { runCatching { File(it).exists() }.getOrDefault(false) }
+    /**
+     * Whether any root marker is present on disk.
+     *
+     * [markers] is injectable so this can actually be exercised. The real
+     * markers are paths only a rooted device has, and creating them needs the
+     * root we are trying to detect — so on any test device this returns false
+     * and the only thing a test could assert is the absence of a false
+     * positive. That leaves the firing path completely unproven, which is how
+     * the emulator and spoofing-app checks stayed broken: both returned false
+     * meaning "could not look", and nothing ever saw them return true.
+     *
+     * Production passes nothing and gets [ROOT_MARKERS] unchanged.
+     */
+    fun isRooted(markers: List<String> = ROOT_MARKERS): Boolean =
+        markers.any { runCatching { File(it).exists() }.getOrDefault(false) }
 
     private fun installedSpoofingApps(context: Context): List<String> =
         SPOOFING_PACKAGES.filter { packageName ->
