@@ -332,16 +332,58 @@ internal fun buildFlowHtml(
             // immediate failure (offline, SRI mismatch) would otherwise fire onerror
             // against an undefined function. The remote script is parser-blocking, so
             // its error event completes before the mount script runs.
+            // The handler does not just report the failure, it diagnoses it.
+            // `onerror` cannot tell an outage from a blocked network from an SRI
+            // mismatch, so the old message listed all three and left whoever hit
+            // it to guess — which is a poor place to leave someone whose only
+            // symptom is a blank widget. Re-fetching the same URL separates
+            // them: a throw is network, a non-2xx is the CDN, and a clean fetch
+            // means the bytes arrived and the browser rejected them, which is a
+            // pin mismatch. Where crypto.subtle is available the actual hash is
+            // reported so the correct pin can be read straight off the error.
             val onError = """
                 <script>
-                function __iqWidgetLoadFailed() {
+                function __iqReport(detail) {
                   var msg = { kind: 'event', name: 'error', payload: {
                     code: '$WIDGET_LOAD_FAILED',
-                    message: 'AddressIQ: the widget could not be loaded from the CDN (outage, '
-                      + 'no network, or a Subresource-Integrity mismatch). The SDK ships no '
-                      + 'bundled copy, so there is nothing to fall back to.'
+                    message: 'AddressIQ: the widget could not be loaded from the CDN. '
+                      + 'The SDK ships no bundled copy, so there is nothing to fall back to.\n'
+                      + detail
                   }};
                   try { window.AddressIQAndroid.postMessage(JSON.stringify(msg)); } catch (e) {}
+                }
+                function __iqWidgetLoadFailed() {
+                  var url = '$cdnScriptUrl';
+                  var expected = '$widgetIntegrity';
+                  try {
+                    fetch(url, { mode: 'cors', cache: 'no-store' }).then(function (r) {
+                      if (!r.ok) {
+                        __iqReport('The CDN answered HTTP ' + r.status + ' for ' + url
+                          + ' — the pinned version is not published there.');
+                        return;
+                      }
+                      return r.arrayBuffer().then(function (buf) {
+                        if (!(window.crypto && crypto.subtle)) {
+                          __iqReport('The bytes fetched cleanly from ' + url
+                            + ', so this is a Subresource-Integrity mismatch. Expected '
+                            + expected + '. (Serve over https to have the actual hash '
+                            + 'reported here.)');
+                          return;
+                        }
+                        return crypto.subtle.digest('SHA-384', buf).then(function (d) {
+                          var b64 = btoa(String.fromCharCode.apply(
+                            null, new Uint8Array(d)));
+                          __iqReport('Subresource-Integrity mismatch for ' + url
+                            + '.\nexpected: ' + expected + '\nactual:   sha384-' + b64);
+                        });
+                      });
+                    }).catch(function (e) {
+                      __iqReport('Could not reach ' + url + ' at all (' + e
+                        + ') — no network, DNS failure, or the host is blocked.');
+                    });
+                  } catch (e) {
+                    __iqReport('Could not reach ' + url + ' (' + e + ').');
+                  }
                 }
                 </script>
             """.trimIndent()
