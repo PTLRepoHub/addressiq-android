@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.1](https://github.com/PTLRepoHub/addressiq-android/compare/v0.9.0...v0.9.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **security:** declare package visibility so spoofing-app detection works. Since API 30 `getPackageInfo` on another app throws unless the package is declared in `<queries>`, and the throw was swallowed — so `security.hasSpoofingApps` reported false on every modern device even with a fake-GPS app installed, and SPOOFING_APP (a terminating flag) could not fire. The five detected packages are now declared by name; `QUERY_ALL_PACKAGES` is deliberately not used, as Play restricts it and this check needs far less.
+
+  Integrators inherit these `<queries>` entries through manifest merging. They grant visibility of those five package names only.
+
 ## [0.9.0](https://github.com/PTLRepoHub/addressiq-android/compare/v0.8.0...v0.9.0) (2026-09-01)
 
 

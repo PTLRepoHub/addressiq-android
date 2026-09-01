@@ -284,7 +284,7 @@ object AddressIQ {
      * bare semver collides — Flutter shipped "0.3.0" as well. Tokens match the
      * idempotency-key vocabulary (`iqidem_android_*`), SDK contract §6.6.
      */
-    private const val SDK_VERSION = "android/0.9.0"
+    private const val SDK_VERSION = "android/0.9.1"
 
     /** SecureKeyValueStore alias for the SQLCipher telemetry DB cipher key. */
     private const val TELEMETRY_CIPHER_KEY_ALIAS = "addressiq_telemetry_cipher_key"
