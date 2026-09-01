@@ -11,9 +11,15 @@ import java.util.UUID
 /**
  * Device-integrity signals attached to every transit event.
  *
- * Deliberately booleans only. They answer "is this device lying about where it
- * is" without identifying it: no install id, no IP, no carrier, no WiFi. Those
- * are personal data and are a separate decision.
+ * Deliberately minimal. They answer "is this device lying about where it is"
+ * without describing who owns it: no IP, no carrier, no SIM country, no WiFi.
+ * Those are personal data and remain a separate decision — which is why
+ * `network.isoCountryCode` and `network.mobileCountryCode`, both read by the
+ * scoring engine, are not collected here.
+ *
+ * The one identifier is `fingerprint.installId`, added deliberately and handled
+ * as personal data: it is per-install, dies with the install, and exists to key
+ * DEVICE_CHANGE and the device blacklist.
  */
 internal object DeviceSignals {
 
@@ -51,6 +57,12 @@ internal object DeviceSignals {
         val signals = mutableMapOf(
             "device" to mapOf<String, Any>("isEmulator" to isEmulator()),
             "location" to mapOf<String, Any>("isMocked" to isMocked(location)),
+            // Whether the app was in the foreground when this event was
+            // recorded. The engine raises ALWAYS_FOREGROUND when nearly every
+            // "background" ping says `active`, which is what driving the app by
+            // hand looks like. Nothing was ever sent on this path, so that
+            // check could not fire.
+            "appState" to mapOf<String, Any>("state" to appState(context)),
             "security" to mapOf<String, Any>(
                 "isRooted" to isRooted(),
                 "hasSpoofingApps" to spoofingApps.isNotEmpty(),
@@ -82,6 +94,25 @@ internal object DeviceSignals {
      * common images (Android Studio, Genymotion); a purpose-built image can
      * defeat it, which is why it is one signal among several.
      */
+    /**
+     * `active` when this process is in the foreground, `background` otherwise.
+     *
+     * Uses the importance of our own process rather than any lifecycle
+     * observer, so it is correct when called from a broadcast receiver or a
+     * WorkManager job — which is where transit events are actually built, and
+     * where no Activity exists to ask.
+     */
+    private fun appState(context: Context): String {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            ?: return "unknown"
+        val mine = runCatching { am.runningAppProcesses }.getOrNull()
+            ?.firstOrNull { it.pid == android.os.Process.myPid() }
+            ?: return "unknown"
+        return if (
+            mine.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+        ) "active" else "background"
+    }
+
     fun isEmulator(): Boolean {
         // `ro.hardware` and the qemu flags first: they are what actually holds
         // on a current AVD. The Build-property checks below them are the
