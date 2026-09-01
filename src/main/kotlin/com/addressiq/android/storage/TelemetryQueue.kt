@@ -23,7 +23,20 @@ public class AddressIQTelemetryQueue private constructor(
 
         public fun init(context: Context, cipherKey: String): AddressIQTelemetryQueue {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: AddressIQTelemetryQueue(context.applicationContext, cipherKey).also { INSTANCE = it }
+                INSTANCE ?: run {
+                    // SQLCipher ships its own native library and does NOT load
+                    // it on demand: without this, the first database open dies
+                    // with "No implementation found for ... dbopen ... is the
+                    // library loaded?".
+                    //
+                    // That mattered more than it looks. Both callers wrap this
+                    // in runCatching, so the UnsatisfiedLinkError was swallowed
+                    // and every telemetry event was silently dropped — the
+                    // queue never opened, nothing was ever persisted, and
+                    // nothing surfaced.
+                    SQLiteDatabase.loadLibs(context.applicationContext)
+                    AddressIQTelemetryQueue(context.applicationContext, cipherKey).also { INSTANCE = it }
+                }
             }
         }
 

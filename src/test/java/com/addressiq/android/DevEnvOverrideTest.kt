@@ -1,6 +1,7 @@
 package com.addressiq.android
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -9,7 +10,7 @@ import org.junit.Test
  * Development-only host + Maps-key overrides, baked from a gitignored
  * `local.properties` (or the environment) into `BuildConfig.ADDRESSIQ_DEV_*`.
  *
- * They exist because the DEVELOPMENT hosts are hardcoded to `10.0.2.2:4000` — an
+ * They exist because the DEVELOPMENT hosts are hardcoded to `10.0.2.2` — an
  * EMULATOR alias for the host machine that a physical device cannot reach.
  *
  * The load-bearing property is the gate: an override is honoured ONLY in
@@ -52,5 +53,12 @@ class DevEnvOverrideTest {
         // ordinary path. A published AAR bakes these as "".
         assertEquals(true, AddressIQDeployment.PRODUCTION.defaultApiUrl().startsWith("https://"))
         assertEquals("http://10.0.2.2:4000", AddressIQDeployment.DEVELOPMENT.defaultApiUrl())
+        // Ingest is a separate service on a separate port; it used to resolve to
+        // 4000 as well, which posted telemetry batches at the API.
+        assertEquals("http://10.0.2.2:4001", AddressIQDeployment.DEVELOPMENT.defaultIngestUrl())
+        assertNotEquals(
+            AddressIQDeployment.DEVELOPMENT.defaultApiUrl(),
+            AddressIQDeployment.DEVELOPMENT.defaultIngestUrl(),
+        )
     }
 }

@@ -37,20 +37,42 @@ class SmokeTest {
         )
     }
 
+    /**
+     * Every deployment fetches the widget from the production CDN.
+     *
+     * This used to assert the opposite — that staging and production resolve to
+     * *different* CDNs. That was wrong once the vendored widget was deleted: the
+     * SDK pins one SRI hash, baked from the production build, and the staging
+     * bundle is deliberately not byte-identical (different Maps key), so a staging
+     * fetch can only ever 404 or fail integrity. There is no bundled copy left to
+     * fall back to, so it surfaces as WIDGET_LOAD_FAILED.
+     */
     @Test
-    fun deploymentsResolveDistinctCdnUrls() {
-        val staging = AddressIQDeployment.STAGING.defaultCdnUrl()
+    fun everyDeploymentFetchesTheWidgetFromTheProductionCdn() {
         val production = AddressIQDeployment.PRODUCTION.defaultCdnUrl()
 
-        assertTrue(staging.startsWith("https://"))
         assertTrue(production.startsWith("https://"))
-        assertEquals("staging and production cdn must differ", false, staging == production)
-        // The CDN is a resolved config value only — nothing fetches from it
-        // (the widget ships bundled in assets/iqcollect.js and fails closed).
+        for (deployment in AddressIQDeployment.entries) {
+            assertEquals(
+                "${deployment.name} must fetch the widget from the pinned production CDN",
+                production,
+                deployment.defaultCdnUrl(),
+            )
+        }
+    }
+
+    /**
+     * Pinning the CDN must not have flattened the deployment axis itself — the API
+     * host is still per-deployment (asserted above), and the CDN is a separate host
+     * from it.
+     */
+    @Test
+    fun theWidgetCdnIsNotTheApiHost() {
         assertEquals(
             "production cdn and api hosts must differ",
             false,
-            production == AddressIQDeployment.PRODUCTION.defaultApiUrl(),
+            AddressIQDeployment.PRODUCTION.defaultCdnUrl() ==
+                AddressIQDeployment.PRODUCTION.defaultApiUrl(),
         )
     }
 

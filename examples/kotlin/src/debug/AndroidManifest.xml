@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Debug builds only. AddressIQDeployment.DEVELOPMENT resolves to
+         http://10.0.2.2 (the emulator's alias for the host), and Android blocks
+         cleartext by default from API 28 — so without this the demo silently
+         uploads nothing when pointed at a local backend. Scoped to that one
+         host; the release build keeps the platform default. -->
+    <application
+        android:networkSecurityConfig="@xml/aiq_dev_network_security_config"
+        tools:replace="android:networkSecurityConfig" />
+</manifest>

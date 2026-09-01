@@ -29,8 +29,10 @@ public class GeofenceTransitionReceiver : BroadcastReceiver() {
 
         // Producer: serialize each triggering geofence into a transit event and
         // persist it to the SQLCipher queue BEFORE scheduling the drain. The
-        // geofence `requestId` is the verification/location code the fence was
-        // registered under (see AddressIQGeofenceController.register).
+        // geofence `requestId` is the LOCATION code the fence was registered
+        // under (see AddressIQGeofenceController.register). Ingest resolves the
+        // geofence by that code, so a verification code here matches nothing and
+        // the event is dropped.
         val location = event.triggeringLocation
         event.triggeringGeofences.orEmpty().forEach { fence ->
             AddressIQ.enqueueTransitEvent(
@@ -40,6 +42,7 @@ public class GeofenceTransitionReceiver : BroadcastReceiver() {
                 lat = location?.latitude,
                 lon = location?.longitude,
                 accuracyM = location?.accuracy?.toDouble(),
+                location = location,
             )
         }
 

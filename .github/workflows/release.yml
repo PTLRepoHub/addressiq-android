@@ -25,7 +25,7 @@ on:
         default: true
 
 permissions:
-  contents: read
+  contents: write # the demo job attaches APKs to the GitHub release
   packages: write
 
 env:
@@ -104,3 +104,70 @@ jobs:
             2*) echo "Deployment handed to the Portal. Finish at https://central.sonatype.com/publishing" ;;
             *)  echo "::error::manual upload failed (HTTP $code). Artifacts uploaded but NOT published." >&2; exit 1 ;;
           esac
+
+  # ---------------------------------------------------------------------------
+  # Demo app builds. Independent of the Maven publish above — a publish failure
+  # must not cost us the downloadable demo, and vice versa.
+  #
+  # Both example apps are built against the LOCAL SDK (`includeBuild("../..")`)
+  # with the release build config baked in, then attached to the GitHub release
+  # so partners can download and sideload them straight from the Releases page.
+  #
+  # These are DEBUG-signed APKs: the example projects carry no release
+  # signingConfig, and a `assembleRelease` without one produces an unsigned APK
+  # that will not install. Debug signing is what makes the artifact usable.
+  # ---------------------------------------------------------------------------
+  demo-apk:
+    name: "Demo APK · ${{ matrix.lang }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [kotlin, java]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10"
+
+      - name: Bake build config (staging + production)
+        env:
+          STAGING_ADDRESSIQ_API_BASE_URL: ${{ vars.STAGING_ADDRESSIQ_API_BASE_URL }}
+          STAGING_ADDRESSIQ_INGEST_BASE_URL: ${{ vars.STAGING_ADDRESSIQ_INGEST_BASE_URL }}
+          STAGING_ADDRESSIQ_CDN_BASE_URL: ${{ vars.STAGING_ADDRESSIQ_CDN_BASE_URL }}
+          PROD_ADDRESSIQ_API_BASE_URL: ${{ vars.PROD_ADDRESSIQ_API_BASE_URL }}
+          PROD_ADDRESSIQ_INGEST_BASE_URL: ${{ vars.PROD_ADDRESSIQ_INGEST_BASE_URL }}
+          PROD_ADDRESSIQ_CDN_BASE_URL: ${{ vars.PROD_ADDRESSIQ_CDN_BASE_URL }}
+        run: scripts/bake-build-config.sh --strict
+
+      - name: Assemble
+        working-directory: examples/${{ matrix.lang }}
+        run: gradle assembleDebug --no-daemon
+
+      - name: Name the artifact after the release
+        id: apk
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then V="${GITHUB_REF_NAME#v}"; else V="0.0.0-dev"; fi
+          SRC=$(find examples/${{ matrix.lang }} -path '*/outputs/apk/debug/*.apk' | head -1)
+          [ -n "$SRC" ] || { echo "::error::no APK produced"; exit 1; }
+          OUT="addressiq-android-example-${{ matrix.lang }}-${V}.apk"
+          mv "$SRC" "$OUT"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.lang }}
+          path: ${{ steps.apk.outputs.path }}
+
+      # Attach to the release release-please cut for this tag. --clobber so a
+      # re-run of the workflow replaces the asset instead of failing.
+      - name: Attach to the GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" "${{ steps.apk.outputs.path }}" --clobber

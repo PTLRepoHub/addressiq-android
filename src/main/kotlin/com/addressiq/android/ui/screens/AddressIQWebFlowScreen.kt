@@ -61,7 +61,7 @@ fun AddressIQWebFlow(
                 // The widget is loaded from the SRI-pinned CDN (the only source — the
                 // SDK ships no bundled copy). A failed load reports WIDGET_LOAD_FAILED
                 // through the bridge above.
-                loadDataWithBaseURL(apiUrl, flowHtml(input, apiUrl, widgetUrl), "text/html", "utf-8", null)
+                loadDataWithBaseURL(apiUrl, flowHtml(input, widgetUrl), "text/html", "utf-8", null)
             }
         },
     )
@@ -242,37 +242,63 @@ internal const val WIDGET_LOAD_FAILED = "WIDGET_LOAD_FAILED"
 
 private fun flowHtml(
     input: AddressIQVerifyInput,
-    apiUrl: String,
     widgetUrl: String?,
+): String = buildFlowHtml(
+    cfgJson = widgetCfgJson(
+        apiKey = input.apiKey,
+        deployment = input.deployment,
+        appUserId = input.appUserId,
+        businessName = input.businessName,
+        primaryHex = input.theme?.primary?.toHexRgb(),
+        secondaryHex = input.theme?.secondary?.toHexRgb(),
+    ),
+    widgetUrl = widgetUrl,
+    cdnScriptUrl = cdnWidgetUrl(input.deployment),
+    widgetIntegrity = AddressIQBuildConfig.widgetIntegrity,
+)
+
+/**
+ * The config object handed to `new AddressIQ.IQCollect(mount, cfg)`.
+ *
+ * Pure and free of Android types (the caller unwraps [AddressIQVerifyInput],
+ * which is Parcelable) so the contract below is unit-tested rather than only
+ * exercised on a device. It went untested before, which is how a whole
+ * deployment could be dropped on the floor unnoticed.
+ *
+ * The widget resolves its OWN API/ingest hosts from [deployment] via its
+ * `resolveEnvironmentUrls`; it never reads a host URL out of this config, and an
+ * absent `environment` silently defaults it to production. Passing a URL here
+ * does nothing — a STAGING build would load the staging bundle from the staging
+ * CDN and then call the PRODUCTION API.
+ *
+ * Business identity is fetched by the widget from the backend (the tenant behind
+ * the API key). A client-supplied name and theme colours override that: the
+ * widget maps `business.primaryColor` / `secondaryColor` onto its CSS vars (see
+ * addressiq-web `applyBrandingVars`), so forwarding the partner's theme here is
+ * what makes the collect UI honour it instead of rendering the default accent.
+ */
+internal fun widgetCfgJson(
+    apiKey: String,
+    deployment: AddressIQDeployment,
+    appUserId: String,
+    businessName: String? = null,
+    primaryHex: String? = null,
+    secondaryHex: String? = null,
 ): String {
-    // Business identity is fetched by the widget from the backend (tenant behind
-    // the API key). Only forward a client-supplied fallback name if provided.
     val cfg = JSONObject()
-        .put("apiKey", input.apiKey)
-        .put("apiUrl", apiUrl)
-        .put("appUserId", input.appUserId)
+        .put("apiKey", apiKey)
+        .put("environment", deployment.name.lowercase())
+        .put("appUserId", appUserId)
         // Drives the platform-specific "Location permission" Settings screen.
         .put("platform", "android")
 
-    // Business identity is fetched by the widget from the backend (tenant behind
-    // the API key). A client-supplied name and theme colours override that. The
-    // widget maps `business.primaryColor` / `secondaryColor` onto its CSS vars
-    // (see addressiq-web `applyBrandingVars`), so forwarding the partner's
-    // `AddressIQVerifyInput.theme` here is what makes the collect UI honour it
-    // instead of silently rendering the widget's default accent.
-    val theme = input.theme
     val business = JSONObject()
-    if (input.businessName != null) business.put("displayName", input.businessName)
-    theme?.primary?.let { business.put("primaryColor", it.toHexRgb()) }
-    theme?.secondary?.let { business.put("secondaryColor", it.toHexRgb()) }
+    if (businessName != null) business.put("displayName", businessName)
+    primaryHex?.let { business.put("primaryColor", it) }
+    secondaryHex?.let { business.put("secondaryColor", it) }
     if (business.length() > 0) cfg.put("business", business)
 
-    return buildFlowHtml(
-        cfgJson = cfg.toString(),
-        widgetUrl = widgetUrl,
-        cdnScriptUrl = cdnWidgetUrl(input.deployment),
-        widgetIntegrity = AddressIQBuildConfig.widgetIntegrity,
-    )
+    return cfg.toString()
 }
 
 /**

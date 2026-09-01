@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext to the emulator's host alias only.
+
+  Android blocks plain HTTP by default from API 28, and the DEVELOPMENT
+  deployment resolves to http://10.0.2.2 — so without this the SDK cannot
+  upload anything on a modern device, which is exactly what happened:
+  `UnknownServiceException: CLEARTEXT communication to 10.0.2.2 not permitted`,
+  swallowed by the best-effort flush and therefore invisible.
+
+  Scoped to the single host, and only in the test/example builds. It is
+  deliberately NOT in the library manifest: merging it would relax the policy
+  for every app that integrates the SDK.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

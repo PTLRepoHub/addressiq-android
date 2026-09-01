@@ -100,6 +100,19 @@ class MainActivity : ComponentActivity() {
                                 // Fallback name; the widget fetches the real
                                 // business identity from the backend.
                                 businessName = vm.businessName.ifBlank { null },
+                                // Null unless ADDRESSIQ_DEV_WIDGET_URL is set AND we
+                                // are on DEVELOPMENT; then the widget loads plainly,
+                                // without the SRI pin. The SDK exposes devWidgetUrl
+                                // for exactly this, but nothing passed it, so the
+                                // documented override was inert.
+                                //
+                                // Guarded on the deployment because devWidgetUrl
+                                // *throws* when the override is set on a non-dev
+                                // build — reading it unconditionally would crash
+                                // Staging for anyone who has the env var exported.
+                                widgetUrl = vm.deployment
+                                    .takeIf { it == AddressIQDeployment.DEVELOPMENT }
+                                    ?.devWidgetUrl,
                             ),
                         )
                     },

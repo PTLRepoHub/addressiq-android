@@ -15,14 +15,19 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 enum class AddressIQDeployment {
     /**
@@ -72,28 +77,52 @@ enum class AddressIQDeployment {
         PRODUCTION -> AddressIQBuildConfig.prodIngestUrl
         STAGING -> AddressIQBuildConfig.stagingIngestUrl
         // Android emulator reaches the host machine's localhost via 10.0.2.2.
-        DEVELOPMENT -> "http://10.0.2.2:4000"
+        // Port 4001, not 4000: ingest is its own service and 4000 is the API
+        // (docker-compose.yml). Pointing telemetry at 4000 posts batches at a
+        // service with no such route — development was the only deployment
+        // where the ingest and API hosts collapsed onto one.
+        DEVELOPMENT -> "http://10.0.2.2:4001"
         }
     }
 
     /**
-     * CDN base URL for this deployment. Baked from `PROD_ADDRESSIQ_CDN_BASE_URL` /
-     * `STAGING_ADDRESSIQ_CDN_BASE_URL`. The verify WebView loads the widget from
+     * CDN base URL the widget is fetched from. The verify WebView loads
      * `{this}/v{widgetVersion}/iqcollect.js` with an SRI hash pinned — see
      * [AddressIQConfig.resolvedCdnUrl].
+     *
+     * This is **not** per-deployment: it is always the production CDN, because the
+     * SDK pins a single SRI hash taken from the production build. See the body for
+     * why staging cannot satisfy that pin. The deployment still selects the API and
+     * ingest hosts; the widget switches to them at runtime.
      */
     public fun defaultCdnUrl(): String {
         // Development-only override (ADDRESSIQ_DEV_CDN_URL) — load the widget from a
         // CDN you serve yourself.
         devOverride("ADDRESSIQ_DEV_CDN_URL", BuildConfig.ADDRESSIQ_DEV_CDN_URL)?.let { return it }
-        return when (this) {
-        PRODUCTION -> AddressIQBuildConfig.prodCdnUrl
-        STAGING -> AddressIQBuildConfig.stagingCdnUrl
-        // NOT the dev host: the local backend serves no /v{x.y.z}/iqcollect.js, and
-        // the SDK ships no bundled copy, so a dev build loads the real pinned widget
-        // from the production CDN. Override with ADDRESSIQ_DEV_CDN_URL.
-        DEVELOPMENT -> AddressIQBuildConfig.prodCdnUrl
-        }
+        // Every deployment loads the widget from the PRODUCTION CDN, because the
+        // SDK pins exactly one SRI hash (AddressIQBuildConfig.widgetIntegrity) and
+        // widget-fanout.yml bakes it from the production build. Two consequences:
+        //
+        //   - The staging bundle can never satisfy that pin. It is deliberately
+        //     NOT byte-identical to production (it bakes the staging Google Maps
+        //     key — see addressiq-web/.github/workflows/cdn.yml), so it hashes
+        //     differently by design.
+        //   - Staging also publishes only on a push to addressiq-web's `staging`
+        //     branch, so it lags whatever version the pin names. It sat on v0.4.2
+        //     while the pin moved to v0.5.3, and every fetch 404'd.
+        //
+        // Neither is a problem, because the bundle is environment-agnostic at
+        // runtime: it bakes BOTH environments' API/ingest hosts in and switches on
+        // the deployment the SDK passes it. So the production bytes drive a staging
+        // verification correctly. Only the Maps key differs.
+        //
+        // Before this, STAGING pointed at stagingCdnUrl and DEVELOPMENT already
+        // pointed here for the same "there is no bundled copy to fall back to"
+        // reason; that reasoning was simply never extended to staging, and the
+        // vendored asset hid it until it was deleted.
+        //
+        // Override with ADDRESSIQ_DEV_CDN_URL to serve the widget yourself.
+        return AddressIQBuildConfig.prodCdnUrl
     }
 
     // NOTE: no SANDBOX alias. It used to exist here as a companion `val SANDBOX =
@@ -106,8 +135,8 @@ enum class AddressIQDeployment {
      * Sourced at build time from a gitignored `local.properties` (or the
      * environment) — see `.env.example` and `buildConfigField` in build.gradle.kts.
      * They exist because the [DEVELOPMENT] hosts are otherwise hardcoded to
-     * `10.0.2.2:4000`, an EMULATOR alias for the host machine that a physical
-     * device cannot reach.
+     * `10.0.2.2` (API on 4000, ingest on 4001) — an EMULATOR alias for the host
+     * machine that a physical device cannot reach.
      *
      * Honoured ONLY in [DEVELOPMENT]. Supplied on any other deployment it throws:
      * a build-time value must never be able to point a shipped app at an arbitrary
@@ -220,6 +249,22 @@ object AddressIQ {
     @Volatile private var currentUser: SdkUser? = null
     @Volatile private var activeVerificationId: String? = null
     @Volatile private var activeLocationCode: String? = null
+
+    /** Unique name so re-activating a session does not stack duplicate workers. */
+    private const val PERIODIC_SYNC_WORK = "addressiq-telemetry-sync"
+
+    /** WorkManager's minimum period for repeating work. */
+    private const val PERIODIC_SYNC_MINUTES = 15L
+
+    /** Oldest cached fix still worth reporting as a background check. */
+    private const val MAX_FIX_AGE_MINUTES = 15L
+
+    /**
+     * Ceiling on the one-shot fix when the cache is cold. WorkManager allows ten
+     * minutes, but a background check is not worth holding a wakelock open for:
+     * if the radio cannot answer in this long it is not going to.
+     */
+    private const val BACKGROUND_FIX_TIMEOUT_MS = 15_000L
     @Volatile private var pausedAtMs: Long? = null
     @Volatile private var state: AddressIQLifecycleState = AddressIQLifecycleState.UNINITIALIZED
     @Volatile private var telemetryQueueReady = false
@@ -230,7 +275,16 @@ object AddressIQ {
      * is emitted for this AAR, so this is a hand-maintained constant kept in
      * step with the released package version.
      */
-    private const val SDK_VERSION = "0.3.0"
+    /**
+     * Reported as `sdkVersion` on every event. Bump the number with the release
+     * tag, and keep the `android/` prefix.
+     *
+     * The prefix is the only thing identifying which SDK produced an event.
+     * `deviceOs` cannot: Flutter and React Native report ANDROID too, and a
+     * bare semver collides — Flutter shipped "0.3.0" as well. Tokens match the
+     * idempotency-key vocabulary (`iqidem_android_*`), SDK contract §6.6.
+     */
+    private const val SDK_VERSION = "android/0.8.0"
 
     /** SecureKeyValueStore alias for the SQLCipher telemetry DB cipher key. */
     private const val TELEMETRY_CIPHER_KEY_ALIAS = "addressiq_telemetry_cipher_key"
@@ -325,9 +379,24 @@ object AddressIQ {
             .post(body.toRequestBody("application/json".toMediaType()))
             .header("x-api-key", cfg.apiKey)
             .build()
+        // Log why a flush failed. This stays best-effort — a failed upload must
+        // never break collection — but silently returning false meant a
+        // permanently undeliverable queue (wrong host, blocked cleartext, bad
+        // key) looked exactly like "nothing to send".
         val ok = runCatching {
-            http.newCall(req).execute().use { it.isSuccessful }
-        }.getOrDefault(false)
+            http.newCall(req).execute().use { response ->
+                if (!response.isSuccessful) {
+                    android.util.Log.w(
+                        "AddressIQ",
+                        "telemetry flush rejected: HTTP ${response.code} from ${req.url}",
+                    )
+                }
+                response.isSuccessful
+            }
+        }.getOrElse { error ->
+            android.util.Log.w("AddressIQ", "telemetry flush failed for ${req.url}", error)
+            false
+        }
         if (ok) queue.acknowledge(batch.map { it.rowId })
     }
 
@@ -646,10 +715,19 @@ object AddressIQ {
         lat: Double?,
         lon: Double?,
         accuracyM: Double?,
+        location: android.location.Location? = null,
     ): String? = runCatching {
         ensureTelemetryQueue(context)
         val eventId = "iqevt_android_${UUID.randomUUID().toString().replace("-", "")}"
-        val payload = buildTransitEventJson(eventId, locationCode, eventType, lat, lon, accuracyM)
+        val payload = buildTransitEventJson(
+            eventId,
+            locationCode,
+            eventType,
+            lat,
+            lon,
+            accuracyM,
+            deviceSignals = DeviceSignals.collect(context, location),
+        )
         AddressIQTelemetryQueue.shared().enqueue(eventId, payload)
         eventId
     }.getOrNull()
@@ -668,6 +746,7 @@ object AddressIQ {
         lon: Double?,
         accuracyM: Double?,
         deviceTs: String = iso8601UtcNow(),
+        deviceSignals: Map<String, Map<String, Any>> = emptyMap(),
     ): String = buildJsonObject {
         put("eventId", eventId)
         put("locationId", locationCode)
@@ -678,6 +757,27 @@ object AddressIQ {
         put("deviceTs", deviceTs)
         put("deviceOs", "ANDROID")
         put("sdkVersion", SDK_VERSION)
+        if (deviceSignals.isNotEmpty()) {
+            // Device integrity travels under rawPayload, which is where the
+            // scoring engine and the dashboard both look for it.
+            putJsonObject("rawPayload") {
+                for ((section, values) in deviceSignals) {
+                    putJsonObject(section) {
+                        for ((key, value) in values) {
+                            when (value) {
+                                is Boolean -> put(key, value)
+                                is String -> put(key, value)
+                                is Number -> put(key, value)
+                                is List<*> -> putJsonArray(key) {
+                                    value.filterIsInstance<String>().forEach { add(it) }
+                                }
+                                else -> Unit
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }.toString()
 
     /**
@@ -716,6 +816,40 @@ object AddressIQ {
      * backend returned (when present), and flush buffered telemetry.
      * Entirely best-effort — a wiring failure never fails the start call.
      */
+    /**
+     * Begin collecting for a verification this SDK did not start.
+     *
+     * The Flutter and React Native SDKs make their own REST call and then need
+     * the native collection path — geofence monitoring, device signals, the
+     * encrypted queue, the periodic worker — to run underneath. Without a
+     * public entry they reimplemented all of it, and neither reimplementation
+     * collected a single device signal, so every fraud check was dark on those
+     * platforms.
+     *
+     * Same behaviour as the internal path `start*` uses, taking the arguments a
+     * wrapper actually has. Best-effort in the same way: a wiring failure never
+     * throws, because the verification already exists server-side.
+     */
+    fun startCollecting(
+        context: Context,
+        locationCode: String,
+        verificationCode: String,
+        latitude: Double?,
+        longitude: Double?,
+        radiusM: Double?,
+    ) {
+        val geofence = if (latitude != null && longitude != null) {
+            mapOf("lat" to latitude, "lon" to longitude, "radiusM" to (radiusM ?: 150.0))
+        } else {
+            null
+        }
+        activateCollection(
+            context = context,
+            locationCode = locationCode,
+            result = mapOf("verificationCode" to verificationCode, "geofence" to geofence),
+        )
+    }
+
     private fun activateCollection(
         context: Context,
         locationCode: String,
@@ -729,12 +863,163 @@ object AddressIQ {
         if (lat != null && lon != null) {
             val radius = (geofence?.get("radiusM") as? Number)?.toFloat() ?: 150f
             runCatching {
+                // The request id must be the LOCATION code: it is the only piece
+                // of the session the transition receiver still has after process
+                // death, and it is the key ingest resolves the geofence by.
                 AddressIQGeofenceController(context.applicationContext)
-                    .register(verificationCode, lat, lon, radius)
+                    .register(locationCode, lat, lon, radius)
             }
         }
         flushTelemetryBestEffort(context.applicationContext)
+        schedulePeriodicSync(context.applicationContext)
     }
+
+    /**
+     * Keep a periodic drain running for the life of the session.
+     *
+     * Geofence transitions alone are near-silent for someone who stays home,
+     * which is the case being verified: Android raises DWELL once per loiter,
+     * not repeatedly. Each run also records where the device is, so a stationary
+     * subject still produces evidence.
+     *
+     * 15 minutes is WorkManager's floor for periodic work; the OS batches it
+     * further under Doze.
+     */
+    private fun schedulePeriodicSync(context: Context) {
+        runCatching {
+            androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                PERIODIC_SYNC_WORK,
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                androidx.work.PeriodicWorkRequestBuilder<com.addressiq.android.work.TelemetrySyncWorker>(
+                    PERIODIC_SYNC_MINUTES,
+                    TimeUnit.MINUTES,
+                ).build(),
+            )
+        }
+    }
+
+    /**
+     * Stop the periodic drain once no session is left to collect for.
+     *
+     * Driven from the worker rather than the session-end calls because logout
+     * and reset carry no Context, and a worker that finds nothing to do is the
+     * one place guaranteed to run after the session ends.
+     */
+    internal fun stopPeriodicSyncIfIdle(context: Context) {
+        if (activeLocationCode == null) cancelPeriodicSync(context)
+    }
+
+    private fun cancelPeriodicSync(context: Context) {
+        runCatching {
+            androidx.work.WorkManager.getInstance(context).cancelUniqueWork(PERIODIC_SYNC_WORK)
+        }
+    }
+
+    /**
+     * Record where the device is right now, for the active session.
+     *
+     * Prefers the fix Play Services already has, because a periodic wake is not
+     * worth a GPS acquisition. A stale fix is not evidence of the present, so
+     * anything older than [MAX_FIX_AGE_MINUTES] is never reported as current.
+     *
+     * But it is not enough to give up when the cache is cold. Geofence
+     * transitions are edge-triggered and DWELL is raised once per loiter, so a
+     * resident asleep at home produces nothing all night — and overnight Doze
+     * both defers this worker into widening maintenance windows and suspends
+     * location updates, so the fused cache is usually well past its age limit by
+     * the time we run. That is precisely the subject being verified, during
+     * precisely the hours that evidence residency. So when the cache is cold,
+     * ask for one current fix instead of recording nothing.
+     */
+    internal suspend fun recordBackgroundCheck(context: Context) {
+        val locationCode = activeLocationCode ?: return
+        if (!hasLocationPermission(context)) return
+
+        val cached = lastKnownLocation(context)
+        val fix = if (isFixFresh(cached)) {
+            cached
+        } else {
+            currentLocation(context)
+        }
+        if (!isFixFresh(fix) || fix == null) return
+
+        enqueueTransitEvent(
+            context = context,
+            locationCode = locationCode,
+            eventType = "BACKGROUND_CHECK",
+            lat = fix.latitude,
+            lon = fix.longitude,
+            accuracyM = fix.accuracy.toDouble(),
+            location = fix,
+        )
+    }
+
+    private fun isFixFresh(location: android.location.Location?): Boolean =
+        location != null && isFixFresh(location.time, System.currentTimeMillis())
+
+    /**
+     * Whether a fix taken at [fixTimeMs] is still current as of [nowMs].
+     *
+     * Takes timestamps rather than a Location because the policy is about time,
+     * not about the object carrying it — and because `android.location.Location`
+     * is a framework stub that throws in a JVM unit test, which would otherwise
+     * leave the rule that decides whether overnight evidence exists untested.
+     */
+    internal fun isFixFresh(fixTimeMs: Long, nowMs: Long): Boolean =
+        nowMs - fixTimeMs <= TimeUnit.MINUTES.toMillis(MAX_FIX_AGE_MINUTES)
+
+    /**
+     * One current fix, bounded so a cold radio cannot hold the worker open.
+     *
+     * Balanced power rather than high accuracy: this runs on battery, and the
+     * smallest geofence registered is far coarser than GPS precision, so
+     * insisting on a satellite fix would spend power resolving a precision the
+     * decision cannot use — and take longer to do it.
+     *
+     * Returns null when the request fails or times out, which lands on the same
+     * "record nothing" as before this existed. It can only add readings, never
+     * fabricate one.
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    private suspend fun currentLocation(context: Context): android.location.Location? =
+        kotlinx.coroutines.withTimeoutOrNull(BACKGROUND_FIX_TIMEOUT_MS) {
+            kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                val cancellation = com.google.android.gms.tasks.CancellationTokenSource()
+                cont.invokeOnCancellation { cancellation.cancel() }
+                runCatching {
+                    val request = com.google.android.gms.location.CurrentLocationRequest.Builder()
+                        .setPriority(
+                            com.google.android.gms.location.Priority
+                                .PRIORITY_BALANCED_POWER_ACCURACY,
+                        )
+                        .setMaxUpdateAgeMillis(TimeUnit.MINUTES.toMillis(MAX_FIX_AGE_MINUTES))
+                        .build()
+                    com.google.android.gms.location.LocationServices
+                        .getFusedLocationProviderClient(context)
+                        .getCurrentLocation(request, cancellation.token)
+                        .addOnSuccessListener { if (cont.isActive) cont.resume(it) }
+                        .addOnFailureListener { if (cont.isActive) cont.resume(null) }
+                }.onFailure { if (cont.isActive) cont.resume(null) }
+            }
+        }
+
+    private fun hasLocationPermission(context: Context): Boolean =
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private suspend fun lastKnownLocation(context: Context): android.location.Location? =
+        suspendCoroutine { cont ->
+            runCatching {
+                com.google.android.gms.location.LocationServices
+                    .getFusedLocationProviderClient(context)
+                    .lastLocation
+                    .addOnSuccessListener { cont.resume(it) }
+                    .addOnFailureListener { cont.resume(null) }
+            }.onFailure { cont.resume(null) }
+        }
 
     private fun emitStateChange() {
         _stateFlow.value = getVerificationStateSnapshot()

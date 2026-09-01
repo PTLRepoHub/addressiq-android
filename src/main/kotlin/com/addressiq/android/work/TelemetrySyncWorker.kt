@@ -8,8 +8,8 @@ import com.addressiq.android.AddressIQ
 /**
  * Background sync worker. Enqueued from
  *  - geofence transitions (immediate)
- *  - periodic schedule registered in `AddressIQ.initialize` (default every
- *    15 minutes when WorkManager constraints are met)
+ *  - a periodic schedule started when a verification begins collecting
+ *    (every 15 minutes, WorkManager's floor, subject to Doze batching)
  *
  * The worker drains the SQLCipher telemetry queue in batches and lets the
  * AddressIQ object coordinate which verifications are still active.
@@ -21,7 +21,10 @@ public class TelemetrySyncWorker(
 
     override suspend fun doWork(): Result =
         try {
+            // Record before draining so the reading ships in the same run.
+            AddressIQ.recordBackgroundCheck(applicationContext)
             AddressIQ.sync(applicationContext)
+            AddressIQ.stopPeriodicSyncIfIdle(applicationContext)
             Result.success()
         } catch (_: Throwable) {
             Result.retry()

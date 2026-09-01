@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- See res/xml/aiq_dev_network_security_config.xml: the instrumented tests
+         upload to a local backend over plain HTTP, which the platform blocks by
+         default. Test-only — the library manifest stays untouched. -->
+    <application
+        android:networkSecurityConfig="@xml/aiq_dev_network_security_config"
+        tools:replace="android:networkSecurityConfig" />
+</manifest>

@@ -172,6 +172,27 @@ AddressIQ.requestPermissions(activity)   // foreground → notifications → bac
 Plain-`Activity` (non-AndroidX) hosts forward their
 `onRequestPermissionsResult` to `AddressIQ.handlePermissionResult(...)`.
 
+### Overnight collection is load-bearing
+
+A digital verification is decided on evidence of repeat presence, and the
+backend counts *night cycles* — distinct overnight periods carrying more than
+one reading inside the geofence. Geofence transitions cannot supply them: they
+are edge-triggered, and `DWELL` is raised once per loiter, so a resident asleep
+at home produces nothing between dusk and morning.
+
+`TelemetrySyncWorker` fills those hours. It runs every 15 minutes, records where
+the device is on each run, and asks Play Services for a current fix when the
+cached one has aged out — because overnight Doze both defers the worker into
+widening maintenance windows *and* suspends location updates, so the fused cache
+is usually stale by the time it runs.
+
+That request needs `ACCESS_BACKGROUND_LOCATION`. Granted only foreground
+location, the SDK still collects transitions and still uploads them — nothing
+errors, nothing is dropped — but it banks no overnight evidence, and every
+verification on that install runs its full window out and resolves as undecided.
+It is the quietest way to make verification fail, so it is worth checking first
+when results come back inconclusive.
+
 ## Example app
 
 Prerequisites: **JDK 17** + the **Android SDK (API 36)**. The example modules
