@@ -8,6 +8,30 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!--
+      Package visibility for the spoofing-app check.
+
+      From Android 11 (API 30) `getPackageInfo` on another app throws
+      NameNotFoundException unless the package is declared here, and
+      DeviceSignals swallows that in a `runCatching`. The result was that
+      `security.hasSpoofingApps` reported false on every modern device even
+      with a fake-GPS app installed — SPOOFING_APP could not fire. Verified on
+      an API 37 emulator with com.lexa.fakegps installed and visible to `pm
+      list packages`, while the SDK could not see it.
+
+      Named packages rather than QUERY_ALL_PACKAGES: that permission is
+      restricted on Play and needs a declared justification, and we only ever
+      ask about this fixed list. Keep in sync with SPOOFING_PACKAGES in
+      DeviceSignals.kt.
+    -->
+    <queries>
+        <package android:name="com.lexa.fakegps" />
+        <package android:name="com.incorporateapps.fakegps.fre" />
+        <package android:name="com.blogspot.newapphorizons.fakegps" />
+        <package android:name="com.theappninjas.fakegpsjoystick" />
+        <package android:name="com.rosteam.gpsemulator" />
+    </queries>
+
     <application>
         <receiver
             android:name="com.addressiq.android.geofence.GeofenceTransitionReceiver"
