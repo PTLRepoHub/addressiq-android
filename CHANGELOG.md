@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.2](https://github.com/PTLRepoHub/addressiq-android/compare/v0.9.1...v0.9.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **security:** make the root markers injectable, so root detection can actually be exercised. `isRooted()` and `collect()` now take the marker list, defaulted to `ROOT_MARKERS`; production passes nothing and behaves exactly as before. The real markers are paths only a rooted device has, and creating them needs the root being detected — so until now the firing path was unexercised and the only assertion available was "no false positive". That is the same blind spot that hid the emulator heuristic and the spoofing-app check, both of which returned `false` meaning "could not look" and were never once observed returning `true`. ROOTED_DEVICE has now been seen to fire end to end on a device.
+
+  No behavioural change: the sole production caller is unchanged and resolves the same default.
+
 ## [0.9.1](https://github.com/PTLRepoHub/addressiq-android/compare/v0.9.0...v0.9.1) (2026-09-01)
 
 
