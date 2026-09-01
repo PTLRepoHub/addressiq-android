@@ -51,11 +51,28 @@ sed -i.bak "s/applicationId = \"com.addressiq.example.java\"/applicationId = \"$
 (cd examples/java && ./gradlew assembleDebug --no-daemon -q)
 adb install -r -t examples/java/build/outputs/apk/debug/*.apk
 
+# Mock-location cannot be granted from inside the process, and without it the
+# MOCK_LOCATION test skips rather than failing — which is how a vacuous pass
+# looks.
+echo "==> granting the mock-location app-op"
+adb shell appops set com.addressiq.android.test android:mock_location allow || true
+
 echo "==> running the collector for real"
 (cd examples/kotlin && ./gradlew :addressiq-android:assembleDebugAndroidTest --no-daemon -q)
 adb install -r -t build/outputs/apk/androidTest/debug/sdk-debug-androidTest.apk
 adb shell am instrument -w -r \
   -e class com.addressiq.android.RealCollectorFraudInstrumentedTest \
+  -e aiqLocationCode "$LOC" \
+  com.addressiq.android.test/androidx.test.runner.AndroidJUnitRunner
+
+# Root and mock-location have their own verifications; both drive the same
+# chain and assert against the same server.
+adb shell am instrument -w -r \
+  -e class com.addressiq.android.RootDetectionInstrumentedTest \
+  -e aiqLocationCode "$LOC" \
+  com.addressiq.android.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r \
+  -e class com.addressiq.android.MockLocationInstrumentedTest \
   -e aiqLocationCode "$LOC" \
   com.addressiq.android.test/androidx.test.runner.AndroidJUnitRunner
 
