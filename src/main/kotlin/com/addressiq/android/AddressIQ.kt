@@ -5,6 +5,7 @@ package com.addressiq.android
 import android.content.Context
 import com.addressiq.android.generated.AddressIQBuildConfig
 import com.addressiq.android.geofence.AddressIQGeofenceController
+import com.addressiq.android.network.pathSegment
 import com.addressiq.android.network.AddressIQApiClient
 import com.addressiq.android.storage.AddressIQTelemetryQueue
 import com.addressiq.android.storage.TinkSecureKeyValueStore
@@ -569,7 +570,7 @@ object AddressIQ {
     ): Map<String, Any?> {
         val cfg = requireInitialized()
         assertLocationPermissionGranted(context)
-        val path = "/api/v1/locations/$locationCode/verifications/digital"
+        val path = "/api/v1/locations/${locationCode.pathSegment()}/verifications/digital"
         val body = buildMap<String, Any?> {
             put("digitalProvider", digitalProvider ?: "internal_ai")
         }
@@ -593,7 +594,7 @@ object AddressIQ {
     ): Map<String, Any?> {
         val cfg = requireInitialized()
         assertLocationPermissionGranted(context)
-        val path = "/api/v1/locations/$locationCode/verifications/physical"
+        val path = "/api/v1/locations/${locationCode.pathSegment()}/verifications/physical"
         val body = buildMap {
             put("provider", provider)
             agentId?.let { put("agentId", it) }
@@ -622,7 +623,7 @@ object AddressIQ {
     ): Map<String, Any?> {
         val cfg = requireInitialized()
         assertLocationPermissionGranted(context)
-        val path = "/api/v1/locations/$locationCode/verifications/combined"
+        val path = "/api/v1/locations/${locationCode.pathSegment()}/verifications/combined"
         val body = buildMap<String, Any?> {
             put("physicalProvider", physicalProvider)
             put("startDigital", startDigital)
@@ -641,13 +642,13 @@ object AddressIQ {
         idempotencyKey: String? = null,
     ): Map<String, Any?> {
         val cfg = requireInitialized()
-        val path = "/api/v1/verifications/$verificationCode/cancel"
+        val path = "/api/v1/verifications/${verificationCode.pathSegment()}/cancel"
         return post(cfg, path, emptyMap(), idempotencyKey, null)
     }
 
     suspend fun listProviders(type: String? = null): List<Map<String, Any?>> {
         val cfg = requireInitialized()
-        val path = "/api/v1/providers" + (type?.let { "?type=$it" } ?: "")
+        val path = "/api/v1/providers" + (type?.let { "?type=${it.pathSegment()}" } ?: "")
         return apiClient(cfg).getList(path)
     }
 

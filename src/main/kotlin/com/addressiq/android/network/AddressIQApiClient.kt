@@ -1,6 +1,7 @@
 package com.addressiq.android.network
 
 import com.addressiq.android.AddressIQError
+import com.addressiq.android.generated.AddressIQBuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -56,7 +57,7 @@ internal class AddressIQApiClient(
         val req = Request.Builder()
             .url(baseUrl + path)
             .post(JsonAny.toJson(body).toString().toRequestBody(JSON_MEDIA_TYPE))
-            .header("x-api-key", apiKey)
+            .identifyingHeaders()
             .header("idempotency-key", idempotencyKey ?: makeIdempotencyKey())
             .apply { branchId?.let { header("x-branch-id", it) } }
             .build()
@@ -78,7 +79,7 @@ internal class AddressIQApiClient(
     suspend fun getList(path: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
         val req = Request.Builder()
             .url(baseUrl + path)
-            .header("x-api-key", apiKey)
+            .identifyingHeaders()
             .build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw AddressIQError.Http(resp.code, null, resp.message)
@@ -95,7 +96,7 @@ internal class AddressIQApiClient(
         val req = Request.Builder()
             .url(baseUrl + path)
             .delete(JsonAny.toJson(body).toString().toRequestBody(JSON_MEDIA_TYPE))
-            .header("x-api-key", apiKey)
+            .identifyingHeaders()
             .build()
         http.newCall(req).execute().close()
     }
@@ -113,7 +114,7 @@ internal class AddressIQApiClient(
         val req = Request.Builder()
             .url(baseUrl + path)
             .post(rawJsonBody.toRequestBody(JSON_MEDIA_TYPE))
-            .header("x-api-key", apiKey)
+            .identifyingHeaders()
             .build()
         runCatching {
             http.newCall(req).execute().use { response ->
@@ -131,10 +132,25 @@ internal class AddressIQApiClient(
         }
     }
 
+    /**
+     * Auth plus SDK identity, on every request.
+     *
+     * `x-sdk-name`/`x-sdk-version` let the server tell platforms and versions
+     * apart — without them a request from this SDK is indistinguishable from
+     * one from iOS or Flutter, which is exactly the position support was in.
+     * The version is baked from `version.txt` rather than written here, so it
+     * cannot drift from the released artifact.
+     */
+    private fun Request.Builder.identifyingHeaders(): Request.Builder = this
+        .header("x-api-key", apiKey)
+        .header("x-sdk-name", SDK_NAME)
+        .header("x-sdk-version", AddressIQBuildConfig.sdkVersion)
+
     private fun makeIdempotencyKey(): String =
         "iqidem_android_${UUID.randomUUID().toString().replace("-", "").take(16)}"
 
     internal companion object {
+        private const val SDK_NAME = "addressiq-android"
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
@@ -190,3 +206,14 @@ internal object JsonAny {
         is JsonArray -> element.map { fromElement(it) }
     }
 }
+
+/**
+ * Percent-encodes a value being interpolated into a URL path.
+ *
+ * Location and verification codes are `LOC_`/`VER_` + alphanumerics today, so
+ * this is a no-op for every real value. It exists so that a code containing a
+ * slash or a space cannot silently reshape the request path — the iOS SDK gets
+ * this from `appendingPathComponent` and the RN SDK from `encodeURIComponent`.
+ */
+internal fun String.pathSegment(): String =
+    java.net.URLEncoder.encode(this, "UTF-8").replace("+", "%20")
