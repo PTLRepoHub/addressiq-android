@@ -5,6 +5,7 @@ package com.addressiq.android
 import android.content.Context
 import com.addressiq.android.generated.AddressIQBuildConfig
 import com.addressiq.android.geofence.AddressIQGeofenceController
+import com.addressiq.android.network.AddressIQApiClient
 import com.addressiq.android.storage.AddressIQTelemetryQueue
 import com.addressiq.android.storage.TinkSecureKeyValueStore
 import kotlinx.coroutines.Dispatchers
@@ -15,25 +16,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -250,10 +238,40 @@ sealed class AddressIQError(message: String) : Exception(message) {
  */
 object AddressIQ {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    private val http: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+
+    /**
+     * One OkHttp client shared by both transports — connection pool and
+     * dispatcher are per-client, so building one per host would waste both.
+     */
+    private val http: OkHttpClient = AddressIQApiClient.defaultHttpClient()
+
+    @Volatile private var cachedApiClient: Pair<Pair<String, String>, AddressIQApiClient>? = null
+    @Volatile private var cachedIngestClient: Pair<Pair<String, String>, AddressIQApiClient>? = null
+
+    /**
+     * Transport for the API host.
+     *
+     * Cached on (url, apiKey) rather than url alone: a re-`initialize` may swap
+     * either the deployment or the key, and a client built from the previous
+     * config would keep signing requests with it.
+     */
+    private fun apiClient(cfg: AddressIQConfig): AddressIQApiClient =
+        cached(cfg, cfg.resolvedApiUrl, { cachedApiClient }, { cachedApiClient = it })
+
+    /** Transport for the telemetry ingest host, which is a different origin. */
+    private fun ingestClient(cfg: AddressIQConfig): AddressIQApiClient =
+        cached(cfg, cfg.resolvedIngestUrl, { cachedIngestClient }, { cachedIngestClient = it })
+
+    private inline fun cached(
+        cfg: AddressIQConfig,
+        url: String,
+        get: () -> Pair<Pair<String, String>, AddressIQApiClient>?,
+        set: (Pair<Pair<String, String>, AddressIQApiClient>) -> Unit,
+    ): AddressIQApiClient {
+        val key = url to cfg.apiKey
+        get()?.takeIf { it.first == key }?.let { return it.second }
+        return AddressIQApiClient(cfg.apiKey, url, http, json).also { set(key to it) }
+    }
 
     @Volatile private var config: AddressIQConfig? = null
     @Volatile private var currentUser: SdkUser? = null
@@ -384,29 +402,10 @@ object AddressIQ {
         val batch = queue.dequeue(50)
         if (batch.isEmpty()) return@withContext
         val body = "{\"events\":[" + batch.joinToString(",") { it.payload } + "]}"
-        val req = Request.Builder()
-            .url("${cfg.resolvedIngestUrl}/v1/transit-events/batch")
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .header("x-api-key", cfg.apiKey)
-            .build()
-        // Log why a flush failed. This stays best-effort — a failed upload must
-        // never break collection — but silently returning false meant a
-        // permanently undeliverable queue (wrong host, blocked cleartext, bad
-        // key) looked exactly like "nothing to send".
-        val ok = runCatching {
-            http.newCall(req).execute().use { response ->
-                if (!response.isSuccessful) {
-                    android.util.Log.w(
-                        "AddressIQ",
-                        "telemetry flush rejected: HTTP ${response.code} from ${req.url}",
-                    )
-                }
-                response.isSuccessful
-            }
-        }.getOrElse { error ->
-            android.util.Log.w("AddressIQ", "telemetry flush failed for ${req.url}", error)
-            false
-        }
+        // Best-effort by contract: a failed upload must never break collection,
+        // so postRaw logs and returns false rather than throwing, and the batch
+        // stays queued for the next flush.
+        val ok = ingestClient(cfg).postRaw("/v1/transit-events/batch", body)
         if (ok) queue.acknowledge(batch.map { it.rowId })
     }
 
@@ -570,11 +569,11 @@ object AddressIQ {
     ): Map<String, Any?> {
         val cfg = requireInitialized()
         assertLocationPermissionGranted(context)
-        val url = "${cfg.resolvedApiUrl}/api/v1/locations/$locationCode/verifications/digital"
+        val path = "/api/v1/locations/$locationCode/verifications/digital"
         val body = buildMap<String, Any?> {
             put("digitalProvider", digitalProvider ?: "internal_ai")
         }
-        val result = post(cfg, url, body, idempotencyKey, branchId)
+        val result = post(cfg, path, body, idempotencyKey, branchId)
         activateCollection(context, locationCode, result)
         return result
     }
@@ -594,13 +593,13 @@ object AddressIQ {
     ): Map<String, Any?> {
         val cfg = requireInitialized()
         assertLocationPermissionGranted(context)
-        val url = "${cfg.resolvedApiUrl}/api/v1/locations/$locationCode/verifications/physical"
+        val path = "/api/v1/locations/$locationCode/verifications/physical"
         val body = buildMap {
             put("provider", provider)
             agentId?.let { put("agentId", it) }
             slaHours?.let { put("slaHours", it) }
         }
-        val result = post(cfg, url, body, idempotencyKey, branchId)
+        val result = post(cfg, path, body, idempotencyKey, branchId)
         activateCollection(context, locationCode, result)
         return result
     }
@@ -623,7 +622,7 @@ object AddressIQ {
     ): Map<String, Any?> {
         val cfg = requireInitialized()
         assertLocationPermissionGranted(context)
-        val url = "${cfg.resolvedApiUrl}/api/v1/locations/$locationCode/verifications/combined"
+        val path = "/api/v1/locations/$locationCode/verifications/combined"
         val body = buildMap<String, Any?> {
             put("physicalProvider", physicalProvider)
             put("startDigital", startDigital)
@@ -631,7 +630,7 @@ object AddressIQ {
             agentId?.let { put("agentId", it) }
             slaHours?.let { put("slaHours", it) }
         }
-        val result = post(cfg, url, body, idempotencyKey, branchId)
+        val result = post(cfg, path, body, idempotencyKey, branchId)
         activateCollection(context, locationCode, result)
         return result
     }
@@ -642,23 +641,14 @@ object AddressIQ {
         idempotencyKey: String? = null,
     ): Map<String, Any?> {
         val cfg = requireInitialized()
-        val url = "${cfg.resolvedApiUrl}/api/v1/verifications/$verificationCode/cancel"
-        return post(cfg, url, emptyMap(), idempotencyKey, null)
+        val path = "/api/v1/verifications/$verificationCode/cancel"
+        return post(cfg, path, emptyMap(), idempotencyKey, null)
     }
 
     suspend fun listProviders(type: String? = null): List<Map<String, Any?>> {
         val cfg = requireInitialized()
-        val url = "${cfg.resolvedApiUrl}/api/v1/providers" + (type?.let { "?type=$it" } ?: "")
-        return withContext(Dispatchers.IO) {
-            val req = Request.Builder()
-                .url(url)
-                .header("x-api-key", cfg.apiKey)
-                .build()
-            http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) throw AddressIQError.Http(resp.code, null, resp.message)
-                JsonAny.decodeObjectArray(json, resp.body?.string().orEmpty())
-            }
-        }
+        val path = "/api/v1/providers" + (type?.let { "?type=$it" } ?: "")
+        return apiClient(cfg).getList(path)
     }
 
     /** Internal — startVerification paths use this to mark COLLECTING. */
@@ -1036,96 +1026,22 @@ object AddressIQ {
 
     private suspend fun post(
         cfg: AddressIQConfig,
-        url: String,
+        path: String,
         body: Map<String, Any?>,
         idempotencyKey: String?,
         branchId: String?,
-    ): Map<String, Any?> = withContext(Dispatchers.IO) {
-        val payload = json.encodeToString(JsonAny.toJson(body))
-        val req = Request.Builder()
-            .url(url)
-            .post(payload.toRequestBody("application/json".toMediaType()))
-            .header("x-api-key", cfg.apiKey)
-            .header("idempotency-key", idempotencyKey ?: makeIdempotencyKey())
-            .apply { branchId?.let { header("x-branch-id", it) } }
-            .build()
-        http.newCall(req).execute().use { resp ->
-            val raw = resp.body?.string().orEmpty()
-            val parsed = if (raw.isBlank()) emptyMap()
-            else JsonAny.decodeObject(json, raw)
-            if (!resp.isSuccessful) {
-                throw AddressIQError.Http(
-                    resp.code,
-                    parsed["code"] as? String,
-                    parsed["message"] as? String ?: resp.message,
-                )
-            }
-            parsed
-        }
-    }
+    ): Map<String, Any?> = apiClient(cfg).post(path, body, idempotencyKey, branchId)
 
     private suspend fun deleteSession(
         cfg: AddressIQConfig,
         appUserId: String,
         verificationCode: String?,
-    ) = withContext(Dispatchers.IO) {
+    ) {
         val body = buildMap<String, Any?> {
             put("appUserId", appUserId)
             verificationCode?.let { put("verificationCode", it) }
         }
-        val req = Request.Builder()
-            .url("${cfg.resolvedApiUrl}/api/v1/sdk/session")
-            .delete(json.encodeToString(JsonAny.toJson(body)).toRequestBody("application/json".toMediaType()))
-            .header("x-api-key", cfg.apiKey)
-            .build()
-        http.newCall(req).execute().close()
-    }
-
-    private fun makeIdempotencyKey(): String =
-        "iqidem_android_${UUID.randomUUID().toString().replace("-", "").take(16)}"
-}
-
-/**
- * Tiny adapter between `Map<String, Any?>` — the shape the public API speaks —
- * and kotlinx.serialization's typed [JsonElement] tree. Booleans and numbers
- * must survive the round trip in both directions: the API sends
- * `{"isExisting": false}` and expects `{"startDigital": true}`, so neither side
- * may flatten values to strings.
- */
-internal object JsonAny {
-    fun toJson(value: Map<String, Any?>): JsonObject =
-        JsonObject(value.mapValues { (_, v) -> toElement(v) })
-
-    private fun toElement(value: Any?): JsonElement = when (value) {
-        null -> JsonNull
-        is JsonElement -> value
-        is String -> JsonPrimitive(value)
-        is Boolean -> JsonPrimitive(value)
-        is Number -> JsonPrimitive(value)
-        is Map<*, *> -> JsonObject(value.entries.associate { (k, v) -> k.toString() to toElement(v) })
-        is Iterable<*> -> JsonArray(value.map { toElement(it) })
-        else -> JsonPrimitive(value.toString())
-    }
-
-    /** Decodes a JSON object body into plain Kotlin values (String/Boolean/Long/Double/Map/List/null). */
-    fun decodeObject(json: Json, raw: String): Map<String, Any?> =
-        json.parseToJsonElement(raw).jsonObject.mapValues { (_, v) -> fromElement(v) }
-
-    /** Decodes a JSON array body whose entries are objects. */
-    fun decodeObjectArray(json: Json, raw: String): List<Map<String, Any?>> =
-        json.parseToJsonElement(raw).jsonArray.map { el ->
-            el.jsonObject.mapValues { (_, v) -> fromElement(v) }
-        }
-
-    private fun fromElement(element: JsonElement): Any? = when (element) {
-        is JsonNull -> null
-        is JsonPrimitive ->
-            if (element.isString) element.content
-            else element.booleanOrNull
-                ?: element.longOrNull
-                ?: element.doubleOrNull
-                ?: element.content
-        is JsonObject -> element.mapValues { (_, v) -> fromElement(v) }
-        is JsonArray -> element.map { fromElement(it) }
+        apiClient(cfg).delete("/api/v1/sdk/session", body)
     }
 }
+

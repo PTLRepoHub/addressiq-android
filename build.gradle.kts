@@ -150,6 +150,10 @@ dependencies {
     // Real org.json impl so JVM unit tests can parse bridge JSON (the android.jar
     // stub throws "not mocked" for org.json).
     testImplementation("org.json:json:20240303")
+    // Drives AddressIQApiClient over a real socket — the transport takes its
+    // base URL as a constructor param precisely so a test can point it here.
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 
     // ── Instrumented tests (./gradlew connectedDebugAndroidTest) ──
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

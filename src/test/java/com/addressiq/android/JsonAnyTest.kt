@@ -1,5 +1,6 @@
 package com.addressiq.android
 
+import com.addressiq.android.network.JsonAny
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
