@@ -15,7 +15,17 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -646,8 +656,7 @@ object AddressIQ {
                 .build()
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) throw AddressIQError.Http(resp.code, null, resp.message)
-                @Suppress("UNCHECKED_CAST")
-                json.decodeFromString<List<Map<String, String?>>>(resp.body?.string().orEmpty()) as List<Map<String, Any?>>
+                JsonAny.decodeObjectArray(json, resp.body?.string().orEmpty())
             }
         }
     }
@@ -1042,9 +1051,8 @@ object AddressIQ {
             .build()
         http.newCall(req).execute().use { resp ->
             val raw = resp.body?.string().orEmpty()
-            @Suppress("UNCHECKED_CAST")
-            val parsed = if (raw.isBlank()) emptyMap<String, Any?>()
-            else json.decodeFromString<Map<String, String?>>(raw) as Map<String, Any?>
+            val parsed = if (raw.isBlank()) emptyMap()
+            else JsonAny.decodeObject(json, raw)
             if (!resp.isSuccessful) {
                 throw AddressIQError.Http(
                     resp.code,
@@ -1077,11 +1085,47 @@ object AddressIQ {
         "iqidem_android_${UUID.randomUUID().toString().replace("-", "").take(16)}"
 }
 
-/** Tiny adapter — kotlinx.serialization needs typed inputs; this lets us pass `Map<String,Any?>`. */
-private object JsonAny {
-    @Serializable
-    data class StringMap(val data: Map<String, String?> = emptyMap())
+/**
+ * Tiny adapter between `Map<String, Any?>` — the shape the public API speaks —
+ * and kotlinx.serialization's typed [JsonElement] tree. Booleans and numbers
+ * must survive the round trip in both directions: the API sends
+ * `{"isExisting": false}` and expects `{"startDigital": true}`, so neither side
+ * may flatten values to strings.
+ */
+internal object JsonAny {
+    fun toJson(value: Map<String, Any?>): JsonObject =
+        JsonObject(value.mapValues { (_, v) -> toElement(v) })
 
-    fun toJson(value: Map<String, Any?>): Map<String, String?> =
-        value.mapValues { (_, v) -> v?.toString() }
+    private fun toElement(value: Any?): JsonElement = when (value) {
+        null -> JsonNull
+        is JsonElement -> value
+        is String -> JsonPrimitive(value)
+        is Boolean -> JsonPrimitive(value)
+        is Number -> JsonPrimitive(value)
+        is Map<*, *> -> JsonObject(value.entries.associate { (k, v) -> k.toString() to toElement(v) })
+        is Iterable<*> -> JsonArray(value.map { toElement(it) })
+        else -> JsonPrimitive(value.toString())
+    }
+
+    /** Decodes a JSON object body into plain Kotlin values (String/Boolean/Long/Double/Map/List/null). */
+    fun decodeObject(json: Json, raw: String): Map<String, Any?> =
+        json.parseToJsonElement(raw).jsonObject.mapValues { (_, v) -> fromElement(v) }
+
+    /** Decodes a JSON array body whose entries are objects. */
+    fun decodeObjectArray(json: Json, raw: String): List<Map<String, Any?>> =
+        json.parseToJsonElement(raw).jsonArray.map { el ->
+            el.jsonObject.mapValues { (_, v) -> fromElement(v) }
+        }
+
+    private fun fromElement(element: JsonElement): Any? = when (element) {
+        is JsonNull -> null
+        is JsonPrimitive ->
+            if (element.isString) element.content
+            else element.booleanOrNull
+                ?: element.longOrNull
+                ?: element.doubleOrNull
+                ?: element.content
+        is JsonObject -> element.mapValues { (_, v) -> fromElement(v) }
+        is JsonArray -> element.map { fromElement(it) }
+    }
 }
