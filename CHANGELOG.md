@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.3](https://github.com/PTLRepoHub/addressiq-android/compare/v0.9.2...v0.9.3) (2026-09-04)
+
+
+### Bug Fixes
+
+* **android:** decode JSON responses as typed values, not strings ([#28](https://github.com/PTLRepoHub/addressiq-android/issues/28)) ([bcac13c](https://github.com/PTLRepoHub/addressiq-android/commit/bcac13c65a2e3acdb03ae9d90d8e8dbbee5b0de2))
+* **android:** identify the SDK on every request, and encode path segments ([#30](https://github.com/PTLRepoHub/addressiq-android/issues/30)) ([7583b60](https://github.com/PTLRepoHub/addressiq-android/commit/7583b605494531eed2f4a4161dfb1bdb29150ba8))
+* **widget:** diagnose a failed CDN load instead of listing three causes ([4436869](https://github.com/PTLRepoHub/addressiq-android/commit/443686904c31d53353f696a8fb795606bbd99e6c))
+
 ## [0.9.2](https://github.com/PTLRepoHub/addressiq-android/compare/v0.9.1...v0.9.2) (2026-09-01)
 
 
