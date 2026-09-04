@@ -46,4 +46,7 @@ internal object AddressIQBuildConfig {
 
     /** SRI hash of the vendored widget (from `.widget-integrity`). "" = unknown. */
     const val widgetIntegrity = "sha384-wUErWmll1WWgesjXvSN93KLxHTDLNXdZ4FMR9nT2tQ7tpdBdEuQCDMkHgdssRvkb"
+
+    /** This SDK's version, from `version.txt`. Sent as x-sdk-version. */
+    const val sdkVersion = "0.9.2"
 }

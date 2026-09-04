@@ -1,6 +1,8 @@
 package com.addressiq.android
 
+import com.addressiq.android.generated.AddressIQBuildConfig
 import com.addressiq.android.network.AddressIQApiClient
+import com.addressiq.android.network.pathSegment
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -82,6 +84,30 @@ class AddressIQApiClientTest {
         assertTrue(req.getHeader("idempotency-key").orEmpty().startsWith("iqidem_android_"))
         // OkHttp appends "; charset=utf-8" to the media type it was given.
         assertTrue(req.getHeader("Content-Type").orEmpty().startsWith("application/json"))
+    }
+
+    @Test
+    fun `identifies the SDK by name and version on every request`() = runTest {
+        server.enqueue(MockResponse().setBody("{}"))
+        server.enqueue(MockResponse().setBody("[]"))
+
+        client().post("/api/v1/x", emptyMap())
+        client().getList("/api/v1/providers")
+
+        repeat(2) {
+            val req = server.takeRequest()
+            assertEquals("addressiq-android", req.getHeader("x-sdk-name"))
+            // Baked from version.txt, so it cannot drift from the release.
+            assertEquals(AddressIQBuildConfig.sdkVersion, req.getHeader("x-sdk-version"))
+            assertTrue(req.getHeader("x-sdk-version").orEmpty().isNotBlank())
+        }
+    }
+
+    @Test
+    fun `percent-encodes a path segment that would reshape the URL`() {
+        assertEquals("LOC_EIMZ3AK8C5XRZBV2", "LOC_EIMZ3AK8C5XRZBV2".pathSegment())
+        assertEquals("a%2Fb", "a/b".pathSegment())
+        assertEquals("a%20b", "a b".pathSegment())
     }
 
     @Test

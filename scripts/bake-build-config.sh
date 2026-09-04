@@ -87,6 +87,12 @@ V_WIDGET_VERSION="$(read_file_trimmed .widget-version)"
 V_WIDGET_VERSION="${V_WIDGET_VERSION#v}"
 V_WIDGET_INTEGRITY="$(read_file_trimmed .widget-integrity)"
 
+# SDK version, from version.txt — the file release-please bumps. Baked rather
+# than hardcoded in Kotlin so it cannot drift from the released artifact: the
+# RN SDK hardcoded its x-sdk-version and reported 0.1.0 for every release up
+# to 0.10.0.
+V_SDK_VERSION="$(read_file_trimmed version.txt)"
+
 mkdir -p "$(dirname "$OUT")"
 
 cat > "$OUT" <<EOF
@@ -138,6 +144,9 @@ internal object AddressIQBuildConfig {
 
     /** SRI hash of the vendored widget (from \`.widget-integrity\`). "" = unknown. */
     const val widgetIntegrity = "$V_WIDGET_INTEGRITY"
+
+    /** This SDK's version, from \`version.txt\`. Sent as x-sdk-version. */
+    const val sdkVersion = "$V_SDK_VERSION"
 }
 EOF
 
