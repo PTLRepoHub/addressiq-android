@@ -7,6 +7,13 @@ on:
     branches: [main]
 
 jobs:
+  release-manifest:
+    name: Release manifest in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-release-manifest.sh
+
   sdk:
     name: SDK · unit tests + lint
     runs-on: ubuntu-latest
